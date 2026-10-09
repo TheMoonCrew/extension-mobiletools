@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension>
+
+	<section if="android">
+
+		<!-- Native Java side of the Android backend -->
+		<java path="java" />
+		<android extension="com.mobiletools.MobileTools" />
+
+		<!-- Required by MobileTools.vibrate() -->
+		<config:android permission="android.permission.VIBRATE" />
+
+	</section>
+
+</extension>

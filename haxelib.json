@@ -1,0 +1,14 @@
+{
+	"name": "extension-mobiletools",
+	"url": "https://github.com/TheMoonCrew/extension-mobiletools",
+	"license": "MIT",
+	"tags": ["lime", "openfl", "mobile", "android", "ios", "extension", "tools"],
+	"description": "A small mobile-focused toolkit for Lime and OpenFL: toast messages, vibration, device info and screen control behind a single cross-platform API.",
+	"version": "0.1.0",
+	"classPath": "src",
+	"releasenote": "Initial base: MobileTools API, Android (JNI) backend and no-op fallback for other targets.",
+	"contributors": ["TheMoonCrew"],
+	"dependencies": {
+		"lime": ""
+	}
+}

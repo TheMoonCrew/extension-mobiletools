@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+
+	<meta title="MobileTools Sample" package="com.mobiletools.sample" version="1.0.0" company="TheMoonCrew" />
+	<app main="Main" path="export" file="MobileToolsSample" />
+	<window width="0" height="0" fullscreen="true" if="mobile" />
+
+	<source path="source" />
+
+	<haxelib name="lime" />
+	<!-- Use the local checkout instead of an installed copy: `haxelib dev extension-mobiletools ../..` -->
+	<haxelib name="extension-mobiletools" />
+
+</project>
