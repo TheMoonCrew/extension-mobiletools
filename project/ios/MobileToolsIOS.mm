@@ -300,6 +300,84 @@ namespace mobiletools
 			return json.c_str();
 		}
 
+		void impact(int style)
+		{
+			runOnMain(^{
+				// Generators are cached: creating one per call adds latency, and prepare() wakes the Taptic Engine.
+				static NSMutableDictionary<NSNumber*, UIImpactFeedbackGenerator*>* generators;
+
+				if (generators == nil)
+					generators = [NSMutableDictionary dictionary];
+
+				UIImpactFeedbackGenerator* generator = generators[@(style)];
+
+				if (generator == nil)
+				{
+					// mobiletools.ImpactStyle: 0 light, 1 medium, 2 heavy, 3 soft, 4 rigid
+					UIImpactFeedbackStyle feedbackStyle = UIImpactFeedbackStyleMedium;
+
+					switch (style)
+					{
+						case 0: feedbackStyle = UIImpactFeedbackStyleLight; break;
+						case 1: feedbackStyle = UIImpactFeedbackStyleMedium; break;
+						case 2: feedbackStyle = UIImpactFeedbackStyleHeavy; break;
+						case 3:
+							if (@available(iOS 13.0, *))
+								feedbackStyle = UIImpactFeedbackStyleSoft;
+							else
+								feedbackStyle = UIImpactFeedbackStyleLight;
+							break;
+						case 4:
+							if (@available(iOS 13.0, *))
+								feedbackStyle = UIImpactFeedbackStyleRigid;
+							else
+								feedbackStyle = UIImpactFeedbackStyleHeavy;
+							break;
+					}
+
+					generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:feedbackStyle];
+					generators[@(style)] = generator;
+				}
+
+				[generator impactOccurred];
+				[generator prepare];
+			});
+		}
+
+		void notification(int type)
+		{
+			runOnMain(^{
+				static UINotificationFeedbackGenerator* generator;
+
+				if (generator == nil)
+					generator = [[UINotificationFeedbackGenerator alloc] init];
+
+				// mobiletools.NotificationType: 0 success, 1 warning, 2 error
+				UINotificationFeedbackType feedbackType = UINotificationFeedbackTypeSuccess;
+
+				if (type == 1)
+					feedbackType = UINotificationFeedbackTypeWarning;
+				else if (type == 2)
+					feedbackType = UINotificationFeedbackTypeError;
+
+				[generator notificationOccurred:feedbackType];
+				[generator prepare];
+			});
+		}
+
+		void selection()
+		{
+			runOnMain(^{
+				static UISelectionFeedbackGenerator* generator;
+
+				if (generator == nil)
+					generator = [[UISelectionFeedbackGenerator alloc] init];
+
+				[generator selectionChanged];
+				[generator prepare];
+			});
+		}
+
 		int checkPermission(const char* permission)
 		{
 			NSString* key = toNSString(permission);

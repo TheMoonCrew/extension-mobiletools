@@ -3,7 +3,7 @@
 A small, mobile-focused toolkit for [Lime](https://lime.software) / [OpenFL](https://www.openfl.org) projects.
 It exposes common native mobile features through one cross-platform Haxe API.
 
-> **Status:** early base (`0.2.0`). The API is small on purpose and will grow.
+> **Status:** early base (`0.1.0`). The API is small on purpose and will grow.
 > The Android Java code compiles, but neither backend has been run on a real device yet, and the iOS code has not been compiled at all.
 
 ## Features
@@ -13,6 +13,7 @@ It exposes common native mobile features through one cross-platform Haxe API.
 | Runtime permissions |    ✅    |  ✅  | always granted |
 | Toast messages      |    ✅    | ✅¹  |     no-op      |
 | Vibration           |    ✅    | ✅²  |     no-op      |
+| Haptics             |    ✅    |  ✅  |     no-op      |
 | Keep screen on      |    ✅    |  ✅  |     no-op      |
 | Device info         |    ✅    |  ✅  |    defaults    |
 
@@ -51,6 +52,20 @@ if (MobileTools.isSupported)
 ```
 
 A runnable example lives in [`samples/basic`](samples/basic).
+
+## Haptics
+
+Semantic feedback for UI interactions. Unlike `vibrate()`, you describe *what happened* and each platform picks the best feel.
+
+```haxe
+import mobiletools.Haptics;
+
+Haptics.selection();             // a picker or switch changed
+Haptics.impact(MEDIUM);          // LIGHT, MEDIUM, HEAVY, SOFT or RIGID: a button press, a collision
+Haptics.notification(SUCCESS);   // SUCCESS, WARNING or ERROR
+```
+
+On iOS this uses the Taptic Engine feedback generators. On Android it uses the system's predefined effects (Android 10+) and falls back to short pulses on older versions, so the feel varies with the device's vibration motor. Needs the `VIBRATE` permission, which the library declares for you.
 
 ## Permissions
 

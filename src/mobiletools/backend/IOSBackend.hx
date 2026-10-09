@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.ImpactStyle;
+import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
 import mobiletools.ToastDuration;
@@ -53,6 +55,21 @@ class IOSBackend implements IBackend
 		{
 			return DeviceInfoTools.unknown();
 		}
+	}
+
+	public function impact(style:ImpactStyle):Void
+	{
+		IOSNative.impact((style : Int));
+	}
+
+	public function notification(type:NotificationType):Void
+	{
+		IOSNative.notification((type : Int));
+	}
+
+	public function selection():Void
+	{
+		IOSNative.selection();
 	}
 
 	public function checkPermission(permission:Permission):PermissionStatus

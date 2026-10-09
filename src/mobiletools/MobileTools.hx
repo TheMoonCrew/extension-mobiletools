@@ -23,7 +23,7 @@ import mobiletools.backend.NullBackend;
 class MobileTools
 {
 	/** Backend selected at compile time for the current target. */
-	@:allow(mobiletools.Permissions)
+	@:allow(mobiletools.Permissions, mobiletools.Haptics)
 	private static var backend:IBackend = createBackend();
 
 	/** `true` when running on a mobile target (Android or iOS). */

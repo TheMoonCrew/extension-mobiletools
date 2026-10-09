@@ -25,6 +25,15 @@ extern class IOSNative
 	@:native('mobiletools::ios::getDeviceInfo')
 	static function getDeviceInfo():ConstCharStar;
 
+	@:native('mobiletools::ios::impact')
+	static function impact(style:Int):Void;
+
+	@:native('mobiletools::ios::notification')
+	static function notification(type:Int):Void;
+
+	@:native('mobiletools::ios::selection')
+	static function selection():Void;
+
 	@:native('mobiletools::ios::checkPermission')
 	static function checkPermission(permission:ConstCharStar):Int;
 

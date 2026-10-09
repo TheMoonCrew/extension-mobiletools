@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.ImpactStyle;
+import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
 import mobiletools.ToastDuration;
@@ -29,6 +31,12 @@ class NullBackend implements IBackend
 	{
 		return DeviceInfoTools.unknown();
 	}
+
+	public function impact(style:ImpactStyle):Void {}
+
+	public function notification(type:NotificationType):Void {}
+
+	public function selection():Void {}
 
 	public function checkPermission(permission:Permission):PermissionStatus
 	{

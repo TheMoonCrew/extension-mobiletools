@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.ImpactStyle;
+import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
 import mobiletools.ToastDuration;
@@ -23,6 +25,9 @@ class AndroidBackend implements IBackend
 	private static var cancelVibrationJNI:Dynamic;
 	private static var setKeepScreenOnJNI:Dynamic;
 	private static var getDeviceInfoJNI:Dynamic;
+	private static var impactJNI:Dynamic;
+	private static var notificationJNI:Dynamic;
+	private static var selectionJNI:Dynamic;
 	private static var checkPermissionJNI:Dynamic;
 	private static var requestPermissionJNI:Dynamic;
 	private static var isPermissionRequestPendingJNI:Dynamic;
@@ -77,6 +82,30 @@ class AndroidBackend implements IBackend
 		{
 			return DeviceInfoTools.unknown();
 		}
+	}
+
+	public function impact(style:ImpactStyle):Void
+	{
+		if (impactJNI == null)
+			impactJNI = JNI.createStaticMethod(JAVA_CLASS, 'impact', '(I)V');
+
+		impactJNI((style : Int));
+	}
+
+	public function notification(type:NotificationType):Void
+	{
+		if (notificationJNI == null)
+			notificationJNI = JNI.createStaticMethod(JAVA_CLASS, 'notification', '(I)V');
+
+		notificationJNI((type : Int));
+	}
+
+	public function selection():Void
+	{
+		if (selectionJNI == null)
+			selectionJNI = JNI.createStaticMethod(JAVA_CLASS, 'selection', '()V');
+
+		selectionJNI();
 	}
 
 	public function checkPermission(permission:Permission):PermissionStatus

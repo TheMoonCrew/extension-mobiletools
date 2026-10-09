@@ -15,6 +15,11 @@ namespace mobiletools
 		// JSON matching the mobiletools.DeviceInfo typedef. The pointer stays valid until the next call.
 		const char* getDeviceInfo();
 
+		// style: mobiletools.ImpactStyle, type: mobiletools.NotificationType
+		void impact(int style);
+		void notification(int type);
+		void selection();
+
 		// Returns a mobiletools.PermissionStatus value for the permission id (see mobiletools.Permission).
 		int checkPermission(const char* permission);
 		void requestPermission(const char* permission);

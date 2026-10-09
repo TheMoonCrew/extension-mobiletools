@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.ImpactStyle;
+import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
 import mobiletools.ToastDuration;
@@ -21,6 +23,10 @@ interface IBackend
 	public function cancelVibration():Void;
 	public function setKeepScreenOn(enabled:Bool):Void;
 	public function getDeviceInfo():DeviceInfo;
+
+	public function impact(style:ImpactStyle):Void;
+	public function notification(type:NotificationType):Void;
+	public function selection():Void;
 
 	/** Current status, without prompting. Must be cheap and synchronous. */
 	public function checkPermission(permission:Permission):PermissionStatus;

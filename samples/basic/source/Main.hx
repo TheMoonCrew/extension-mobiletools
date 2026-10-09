@@ -1,5 +1,6 @@
 import lime.app.Application;
 import lime.ui.MouseButton;
+import mobiletools.Haptics;
 import mobiletools.MobileTools;
 import mobiletools.Permissions;
 
@@ -23,7 +24,7 @@ class Main extends Application
 	// Tap / click anywhere to trigger the demo calls.
 	override public function onMouseDown(x:Float, y:Float, button:MouseButton):Void
 	{
-		MobileTools.vibrate(80);
+		Haptics.impact(MEDIUM);
 
 		Permissions.request(CAMERA, function(status)
 		{

@@ -118,6 +118,88 @@ public class MobileTools extends Extension
 		return json.toString();
 	}
 
+	// ---------------------------------------------------------------- haptics
+
+	/** style is a mobiletools.ImpactStyle value: 0 light, 1 medium, 2 heavy, 3 soft, 4 rigid. */
+	public static void impact(int style)
+	{
+		switch (style)
+		{
+			case 0:
+				playEffect(VibrationEffect.EFFECT_TICK, 10, 60);
+				break;
+			case 2:
+				playEffect(VibrationEffect.EFFECT_HEAVY_CLICK, 30, 255);
+				break;
+			case 3:
+				playEffect(VibrationEffect.EFFECT_TICK, 15, 40);
+				break;
+			case 4:
+				playEffect(VibrationEffect.EFFECT_CLICK, 12, 200);
+				break;
+			default:
+				playEffect(VibrationEffect.EFFECT_CLICK, 20, 120);
+				break;
+		}
+	}
+
+	/** type is a mobiletools.NotificationType value: 0 success, 1 warning, 2 error. */
+	public static void notification(int type)
+	{
+		// off/on/off/on... timings in ms, first entry is the initial delay
+		switch (type)
+		{
+			case 1:
+				playPattern(new long[] { 0, 40, 80, 40 });
+				break;
+			case 2:
+				playPattern(new long[] { 0, 50, 60, 50, 60, 50 });
+				break;
+			default:
+				playPattern(new long[] { 0, 30, 60, 30 });
+				break;
+		}
+	}
+
+	public static void selection()
+	{
+		playEffect(VibrationEffect.EFFECT_TICK, 8, 50);
+	}
+
+	/**
+	 * Plays the system's predefined effect on Android 10+. Older versions get a short one-shot
+	 * pulse of the given length and amplitude (1-255), or just the length before Android 8.
+	 */
+	@SuppressWarnings("deprecation")
+	private static void playEffect(int predefinedEffect, long fallbackMilliseconds, int fallbackAmplitude)
+	{
+		Vibrator vibrator = getVibrator();
+
+		if (vibrator == null || !vibrator.hasVibrator())
+			return;
+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+			vibrator.vibrate(VibrationEffect.createPredefined(predefinedEffect));
+		else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+			vibrator.vibrate(VibrationEffect.createOneShot(fallbackMilliseconds, fallbackAmplitude));
+		else
+			vibrator.vibrate(fallbackMilliseconds);
+	}
+
+	@SuppressWarnings("deprecation")
+	private static void playPattern(long[] timings)
+	{
+		Vibrator vibrator = getVibrator();
+
+		if (vibrator == null || !vibrator.hasVibrator())
+			return;
+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+			vibrator.vibrate(VibrationEffect.createWaveform(timings, -1));
+		else
+			vibrator.vibrate(timings, -1);
+	}
+
 	// ---------------------------------------------------------------- permissions
 
 	/** Returns a mobiletools.PermissionStatus value for the permission id (see mobiletools.Permission). */
