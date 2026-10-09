@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.Permission;
+import mobiletools.PermissionStatus;
 import mobiletools.ToastDuration;
 
 #if (lime && android)
@@ -21,6 +23,10 @@ class AndroidBackend implements IBackend
 	private static var cancelVibrationJNI:Dynamic;
 	private static var setKeepScreenOnJNI:Dynamic;
 	private static var getDeviceInfoJNI:Dynamic;
+	private static var checkPermissionJNI:Dynamic;
+	private static var requestPermissionJNI:Dynamic;
+	private static var isPermissionRequestPendingJNI:Dynamic;
+	private static var openSettingsJNI:Dynamic;
 
 	public var isNative(get, never):Bool;
 
@@ -71,6 +77,38 @@ class AndroidBackend implements IBackend
 		{
 			return DeviceInfoTools.unknown();
 		}
+	}
+
+	public function checkPermission(permission:Permission):PermissionStatus
+	{
+		if (checkPermissionJNI == null)
+			checkPermissionJNI = JNI.createStaticMethod(JAVA_CLASS, 'checkPermission', '(Ljava/lang/String;)I');
+
+		return (checkPermissionJNI((permission : String)) : Int);
+	}
+
+	public function requestPermission(permission:Permission):Void
+	{
+		if (requestPermissionJNI == null)
+			requestPermissionJNI = JNI.createStaticMethod(JAVA_CLASS, 'requestPermission', '(Ljava/lang/String;)V');
+
+		requestPermissionJNI((permission : String));
+	}
+
+	public function isPermissionRequestPending(permission:Permission):Bool
+	{
+		if (isPermissionRequestPendingJNI == null)
+			isPermissionRequestPendingJNI = JNI.createStaticMethod(JAVA_CLASS, 'isPermissionRequestPending', '(Ljava/lang/String;)Z');
+
+		return isPermissionRequestPendingJNI((permission : String));
+	}
+
+	public function openSettings():Void
+	{
+		if (openSettingsJNI == null)
+			openSettingsJNI = JNI.createStaticMethod(JAVA_CLASS, 'openSettings', '()V');
+
+		openSettingsJNI();
 	}
 
 	@:noCompletion private inline function get_isNative():Bool

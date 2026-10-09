@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.Permission;
+import mobiletools.PermissionStatus;
 import mobiletools.ToastDuration;
 
 /**
@@ -19,4 +21,19 @@ interface IBackend
 	public function cancelVibration():Void;
 	public function setKeepScreenOn(enabled:Bool):Void;
 	public function getDeviceInfo():DeviceInfo;
+
+	/** Current status, without prompting. Must be cheap and synchronous. */
+	public function checkPermission(permission:Permission):PermissionStatus;
+
+	/**
+	 * Starts the system prompt. Must return immediately, and must make
+	 * `isPermissionRequestPending()` return `true` before returning if a prompt was shown.
+	 */
+	public function requestPermission(permission:Permission):Void;
+
+	/** `true` from `requestPermission()` until the user answered the prompt. */
+	public function isPermissionRequestPending(permission:Permission):Bool;
+
+	/** Opens the app's page in the system settings. */
+	public function openSettings():Void;
 }

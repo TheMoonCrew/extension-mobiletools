@@ -1,0 +1,20 @@
+<xml>
+
+	<!-- Pulled in by the @:buildXml metadata on mobiletools.backend.IOSNative -->
+
+	<files id="mobiletools_ios">
+		<compilerflag value="-I${this_dir}" />
+		<compilerflag value="-fobjc-arc" />
+		<file name="${this_dir}/MobileToolsIOS.mm" />
+	</files>
+
+	<!-- Lets the generated Haxe code find MobileToolsIOS.h -->
+	<files id="haxe">
+		<compilerflag value="-I${this_dir}" />
+	</files>
+
+	<target id="haxe">
+		<files id="mobiletools_ios" />
+	</target>
+
+</xml>

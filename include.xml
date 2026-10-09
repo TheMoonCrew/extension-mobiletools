@@ -10,6 +10,23 @@
 		<!-- Required by MobileTools.vibrate() -->
 		<config:android permission="android.permission.VIBRATE" />
 
+		<!--
+			Permissions used by `Permissions` (CAMERA, RECORD_AUDIO, ACCESS_FINE_LOCATION, ...) are NOT declared here
+			on purpose, so apps only ship the ones they need. Add them in your own project.xml, see the README.
+		-->
+
+	</section>
+
+	<section if="ios">
+
+		<!-- The Objective-C++ source is compiled by hxcpp, see IOSNative.hx and project/ios/mobiletools_ios.xml -->
+		<dependency name="UIKit.framework" />
+		<dependency name="AudioToolbox.framework" />
+		<dependency name="AVFoundation.framework" />
+		<dependency name="CoreLocation.framework" />
+		<dependency name="Photos.framework" />
+		<dependency name="UserNotifications.framework" />
+
 	</section>
 
 </extension>

@@ -4,13 +4,15 @@ import mobiletools.DeviceInfo;
 import mobiletools.ToastDuration;
 import mobiletools.backend.AndroidBackend;
 import mobiletools.backend.IBackend;
+import mobiletools.backend.IOSBackend;
 import mobiletools.backend.NullBackend;
 
 /**
  * Cross-platform entry point of `extension-mobiletools`.
  *
  * All methods are safe to call on any target. Where no native backend exists
- * (desktop, html5, iOS for now) they do nothing, so no `#if` guards are needed:
+ * (desktop, html5) they do nothing, so no `#if` guards are needed. Runtime
+ * permissions live in `Permissions`.
  *
  * ```haxe
  * MobileTools.showToast('Level saved!');
@@ -21,6 +23,7 @@ import mobiletools.backend.NullBackend;
 class MobileTools
 {
 	/** Backend selected at compile time for the current target. */
+	@:allow(mobiletools.Permissions)
 	private static var backend:IBackend = createBackend();
 
 	/** `true` when running on a mobile target (Android or iOS). */
@@ -80,6 +83,8 @@ class MobileTools
 	{
 		#if (lime && android)
 		return new AndroidBackend();
+		#elseif (cpp && ios)
+		return new IOSBackend();
 		#else
 		return new NullBackend();
 		#end
