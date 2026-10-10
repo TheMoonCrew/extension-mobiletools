@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+
+	<meta title="MobileTools Showcase" package="com.mobiletools.showcase" version="1.0.0" company="TheMoonCrew" />
+	<app main="Main" path="export" file="Showcase" />
+
+	<window width="360" height="640" background="#0F1318" fps="60" />
+	<window orientation="portrait" fullscreen="true" resizable="false" if="mobile" />
+
+	<source path="source" />
+
+	<haxelib name="openfl" />
+	<!-- Use the local checkout instead of an installed copy: `haxelib dev extension-mobiletools ../..` -->
+	<haxelib name="extension-mobiletools" />
+
+	<!-- Every permission the showcase can request. Real apps should only declare what they use. -->
+	<section if="android">
+		<config:android permission="android.permission.CAMERA" />
+		<config:android permission="android.permission.RECORD_AUDIO" />
+		<config:android permission="android.permission.ACCESS_FINE_LOCATION" />
+		<config:android permission="android.permission.ACCESS_COARSE_LOCATION" />
+		<config:android permission="android.permission.POST_NOTIFICATIONS" />
+		<config:android permission="android.permission.READ_MEDIA_IMAGES" />
+		<config:android permission="android.permission.READ_MEDIA_AUDIO" />
+		<config:android permission="android.permission.READ_EXTERNAL_STORAGE" />
+		<config:android permission="android.permission.WRITE_EXTERNAL_STORAGE" />
+		<config:android permission="android.permission.MANAGE_EXTERNAL_STORAGE" />
+	</section>
+
+	<!-- Usage descriptions, merged into Info.plist by Lime. "Showcase" is the <app file> above. -->
+	<template path="Permissions-Info.plist" rename="Showcase/Permissions-Info.plist" if="ios" />
+
+</project>

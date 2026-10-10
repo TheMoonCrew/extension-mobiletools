@@ -25,6 +25,24 @@ enum abstract Permission(String) to String
 	/** Posting notifications. */
 	var NOTIFICATIONS = 'notifications';
 
-	/** Read access to the user's photo library. */
-	var PHOTOS = 'photos';
+	/** Read access to the user's images (iOS: the photo library). */
+	var IMAGES = 'images';
+
+	/** Read access to the user's audio files (iOS: the media / music library). */
+	var AUDIO = 'audio';
+
+	/**
+	 * Classic storage read/write permission. Only needed up to Android 12L (API 32);
+	 * from Android 13 and on iOS it is always `GRANTED`.
+	 */
+	var STORAGE = 'storage';
+
+	/**
+	 * Full access to shared external storage, outside your app's own folders.
+	 *
+	 * Up to Android 10 this is the regular storage prompt. From Android 11 it is the
+	 * "All files access" switch, which opens a system settings screen instead of a dialog
+	 * (and is restricted by Google Play). Always `GRANTED` on iOS.
+	 */
+	var EXTERNAL_STORAGE = 'external_storage';
 }

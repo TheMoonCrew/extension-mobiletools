@@ -4,6 +4,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreLocation/CoreLocation.h>
+#import <MediaPlayer/MediaPlayer.h>
 #import <Photos/Photos.h>
 #import <UserNotifications/UserNotifications.h>
 
@@ -153,7 +154,7 @@ static int locationStatus()
 static CLLocationManager* locationManager;
 static MTLocationDelegate* locationDelegate;
 
-#pragma mark - Camera / microphone / photos / notifications
+#pragma mark - Camera / microphone / images / audio / notifications
 
 static int mapAVStatus(AVAuthorizationStatus status)
 {
@@ -168,7 +169,7 @@ static int mapAVStatus(AVAuthorizationStatus status)
 	return StatusNotDetermined;
 }
 
-static int photosStatus()
+static int imagesStatus()
 {
 	NSInteger status;
 
@@ -183,6 +184,18 @@ static int photosStatus()
 		case 0: return StatusNotDetermined;
 		case 1: return StatusRestricted;
 		case 2: return StatusDeniedPermanently;
+		default: return StatusGranted;
+	}
+}
+
+static int audioStatus()
+{
+	// MPMediaLibraryAuthorizationStatus: 0 notDetermined, 1 denied, 2 restricted, 3 authorized
+	switch ((NSInteger)[MPMediaLibrary authorizationStatus])
+	{
+		case 0: return StatusNotDetermined;
+		case 1: return StatusDeniedPermanently;
+		case 2: return StatusRestricted;
 		default: return StatusGranted;
 	}
 }
@@ -391,12 +404,16 @@ namespace mobiletools
 			if ([key isEqualToString:@"location"])
 				return locationStatus();
 
-			if ([key isEqualToString:@"photos"])
-				return photosStatus();
+			if ([key isEqualToString:@"images"])
+				return imagesStatus();
+
+			if ([key isEqualToString:@"audio"])
+				return audioStatus();
 
 			if ([key isEqualToString:@"notifications"])
 				return notificationsStatus();
 
+			// "storage" and "external_storage" have no iOS equivalent: apps always own their sandbox.
 			return StatusGranted;
 		}
 
@@ -431,7 +448,7 @@ namespace mobiletools
 					[locationManager requestWhenInUseAuthorization];
 				});
 			}
-			else if ([key isEqualToString:@"photos"])
+			else if ([key isEqualToString:@"images"])
 			{
 				setPending(key, YES);
 
@@ -439,6 +456,11 @@ namespace mobiletools
 					[PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelReadWrite handler:^(PHAuthorizationStatus status) { setPending(key, NO); }];
 				else
 					[PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) { setPending(key, NO); }];
+			}
+			else if ([key isEqualToString:@"audio"])
+			{
+				setPending(key, YES);
+				[MPMediaLibrary requestAuthorization:^(MPMediaLibraryAuthorizationStatus status) { setPending(key, NO); }];
 			}
 			else if ([key isEqualToString:@"notifications"])
 			{

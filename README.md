@@ -51,7 +51,7 @@ if (MobileTools.isSupported)
     trace('Native backend active');
 ```
 
-A runnable example lives in [`samples/basic`](samples/basic).
+Two runnable examples live in [`samples/`](samples): `basic` (minimal Lime) and `showcase` (a touch-friendly OpenFL app that exercises every feature).
 
 ## Haptics
 
@@ -88,7 +88,20 @@ var status = Permissions.check(MICROPHONE);
 Permissions.requestMany([CAMERA, MICROPHONE], function(results) trace(results));
 ```
 
-Available permissions: `CAMERA`, `MICROPHONE`, `LOCATION` (while in use), `NOTIFICATIONS`, `PHOTOS` (read).
+Available permissions:
+
+| Permission         | Android                                                               | iOS                    |
+| ------------------ | --------------------------------------------------------------------- | ---------------------- |
+| `CAMERA`           | `CAMERA`                                                              | Camera                 |
+| `MICROPHONE`       | `RECORD_AUDIO`                                                        | Microphone             |
+| `LOCATION`         | `ACCESS_FINE_LOCATION` + `ACCESS_COARSE_LOCATION`                     | Location, while in use |
+| `NOTIFICATIONS`    | `POST_NOTIFICATIONS` (Android 13+, otherwise always granted)          | Notifications          |
+| `IMAGES`           | `READ_MEDIA_IMAGES` (13+), else `READ_EXTERNAL_STORAGE`               | Photo library          |
+| `AUDIO`            | `READ_MEDIA_AUDIO` (13+), else `READ_EXTERNAL_STORAGE`                | Media / music library  |
+| `STORAGE`          | `READ/WRITE_EXTERNAL_STORAGE` up to Android 12L, always granted after | always granted         |
+| `EXTERNAL_STORAGE` | Up to Android 10 the storage prompt, Android 11+ "All files access"   | always granted         |
+
+`EXTERNAL_STORAGE` on Android 11+ does not show a dialog: it opens a system settings screen and the request finishes when the user comes back. Google Play restricts apps that declare `MANAGE_EXTERNAL_STORAGE`, so only use it if you really need to read and write outside your app's folders.
 
 | Status               | Meaning                                                              |
 | -------------------- | -------------------------------------------------------------------- |
@@ -112,8 +125,11 @@ The library does **not** declare permissions for you, so your app only ships the
 <config:android permission="android.permission.ACCESS_FINE_LOCATION" />  <!-- LOCATION -->
 <config:android permission="android.permission.ACCESS_COARSE_LOCATION" />
 <config:android permission="android.permission.POST_NOTIFICATIONS" />    <!-- NOTIFICATIONS (Android 13+) -->
-<config:android permission="android.permission.READ_MEDIA_IMAGES" />     <!-- PHOTOS (Android 13+) -->
-<config:android permission="android.permission.READ_EXTERNAL_STORAGE" /> <!-- PHOTOS (older) -->
+<config:android permission="android.permission.READ_MEDIA_IMAGES" />     <!-- IMAGES (Android 13+) -->
+<config:android permission="android.permission.READ_MEDIA_AUDIO" />      <!-- AUDIO (Android 13+) -->
+<config:android permission="android.permission.READ_EXTERNAL_STORAGE" /> <!-- IMAGES, AUDIO, STORAGE (Android 12L and older) -->
+<config:android permission="android.permission.WRITE_EXTERNAL_STORAGE" /><!-- STORAGE (Android 12L and older) -->
+<config:android permission="android.permission.MANAGE_EXTERNAL_STORAGE" /><!-- EXTERNAL_STORAGE (Android 11+) -->
 ```
 
 Without the manifest entry Android denies the request immediately. Runtime permissions need target SDK 23 or higher.
@@ -129,6 +145,7 @@ Without the manifest entry Android denies the request immediately. Runtime permi
 	<key>NSMicrophoneUsageDescription</key>        <string>Why you need the microphone</string>
 	<key>NSLocationWhenInUseUsageDescription</key> <string>Why you need your location</string>
 	<key>NSPhotoLibraryUsageDescription</key>      <string>Why you need your photos</string>
+	<key>NSAppleMusicUsageDescription</key>        <string>Why you need your music</string>
 </dict>
 </plist>
 ```
@@ -139,7 +156,7 @@ and copy it into the Xcode project folder (`MyApp` = your `<app file="...">`):
 <template path="Permissions-Info.plist" rename="MyApp/Permissions-Info.plist" if="ios" />
 ```
 
-Notifications need no plist key.
+Notifications, `STORAGE` and `EXTERNAL_STORAGE` need no plist key.
 
 ## Project layout
 
@@ -150,6 +167,7 @@ java/com/mobiletools/     Android native code, called through JNI
 project/ios/              iOS native code (Objective-C++), compiled by hxcpp
 include.xml               Lime build config (Java sources, iOS frameworks)
 samples/basic/            Minimal Lime sample
+samples/showcase/         Touch UI demo app (OpenFL)
 ```
 
 ## Adding a backend

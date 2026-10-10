@@ -4,6 +4,6 @@
 
 - Initial release.
 - `MobileTools`: `showToast`, `vibrate`, `cancelVibration`, `setKeepScreenOn`, `getDeviceInfo`.
-- `Permissions`: `check`, `request`, `requestMany`, `openSettings` for `CAMERA`, `MICROPHONE`, `LOCATION`, `NOTIFICATIONS` and `PHOTOS`.
+- `Permissions`: `check`, `request`, `requestMany`, `openSettings` for `CAMERA`, `MICROPHONE`, `LOCATION`, `NOTIFICATIONS`, `IMAGES`, `AUDIO`, `STORAGE` and `EXTERNAL_STORAGE`.
 - `Haptics`: `impact`, `notification`, `selection`.
 - Android backend (Java + JNI), iOS backend (Objective-C++ compiled by hxcpp) and a no-op `NullBackend` for every other target.

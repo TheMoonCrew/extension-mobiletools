@@ -25,6 +25,7 @@
 		<dependency name="AVFoundation.framework" />
 		<dependency name="CoreLocation.framework" />
 		<dependency name="Photos.framework" />
+		<dependency name="MediaPlayer.framework" />
 		<dependency name="UserNotifications.framework" />
 
 	</section>

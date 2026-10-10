@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>The showcase asks for camera access to demonstrate the permission prompt.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The showcase asks for microphone access to demonstrate the permission prompt.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>The showcase asks for location access to demonstrate the permission prompt.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>The showcase asks for photo library access to demonstrate the permission prompt.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>The showcase asks for media library access to demonstrate the permission prompt.</string>
+</dict>
+</plist>

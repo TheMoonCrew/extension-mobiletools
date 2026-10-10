@@ -1,12 +1,14 @@
 package com.mobiletools;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
@@ -34,6 +36,7 @@ public class MobileTools extends Extension
 	private static final int STATUS_DENIED_PERMANENTLY = 3;
 
 	private static final int PERMISSION_REQUEST_CODE = 7391;
+	private static final int ALL_FILES_REQUEST_CODE = 7392;
 	private static final String PREFS_NAME = "mobiletools_permissions";
 
 	/** Permission ids (see mobiletools.Permission) whose system prompt is currently showing. */
@@ -206,6 +209,10 @@ public class MobileTools extends Extension
 	public static int checkPermission(String id)
 	{
 		Activity activity = Extension.mainActivity;
+
+		if (usesAllFilesAccess(id))
+			return checkAllFilesAccess();
+
 		String[] permissions = androidPermissions(id);
 
 		// No runtime permission on this OS version (or unknown id): nothing to ask.
@@ -244,6 +251,12 @@ public class MobileTools extends Extension
 		final Activity activity = Extension.mainActivity;
 		final String[] permissions = androidPermissions(id);
 
+		if (usesAllFilesAccess(id))
+		{
+			requestAllFilesAccess(activity);
+			return;
+		}
+
 		if (activity == null || permissions.length == 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M)
 			return;
 
@@ -278,6 +291,66 @@ public class MobileTools extends Extension
 		activity.startActivity(intent);
 	}
 
+	/** "All files access" (Android 11+) is a settings switch rather than a runtime permission. */
+	private static boolean usesAllFilesAccess(String id)
+	{
+		return "external_storage".equals(id) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R;
+	}
+
+	private static int checkAllFilesAccess()
+	{
+		if (Environment.isExternalStorageManager())
+			return STATUS_GRANTED;
+
+		// The screen can always be opened again, so a refusal is never permanent.
+		return wasRequested("external_storage") ? STATUS_DENIED : STATUS_NOT_DETERMINED;
+	}
+
+	private static void requestAllFilesAccess(final Activity activity)
+	{
+		if (activity == null || checkAllFilesAccess() == STATUS_GRANTED || !pendingRequests.add("external_storage"))
+			return;
+
+		activity.runOnUiThread(new Runnable()
+		{
+			@Override
+			public void run()
+			{
+				Uri packageUri = Uri.parse("package:" + activity.getPackageName());
+
+				try
+				{
+					activity.startActivityForResult(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, packageUri), ALL_FILES_REQUEST_CODE);
+				}
+				catch (ActivityNotFoundException e)
+				{
+					// Some devices lack the per-app screen, so fall back to the list of all apps.
+					try
+					{
+						activity.startActivityForResult(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), ALL_FILES_REQUEST_CODE);
+					}
+					catch (ActivityNotFoundException e2)
+					{
+						pendingRequests.remove("external_storage");
+					}
+				}
+			}
+		});
+	}
+
+	/** Called when the user comes back from the "All files access" settings screen. */
+	@Override
+	public boolean onActivityResult(int requestCode, int resultCode, Intent data)
+	{
+		if (requestCode == ALL_FILES_REQUEST_CODE)
+		{
+			markRequested("external_storage");
+			pendingRequests.remove("external_storage");
+		}
+
+		return true;
+	}
+
 	@Override
 	public boolean onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults)
 	{
@@ -287,7 +360,15 @@ public class MobileTools extends Extension
 		// Empty arrays mean the request was interrupted. Release everything so Haxe doesn't wait forever.
 		if (permissions.length == 0)
 		{
-			pendingRequests.clear();
+			synchronized (pendingRequests)
+			{
+				for (String id : new HashSet<String>(pendingRequests))
+				{
+					if (!usesAllFilesAccess(id))
+						pendingRequests.remove(id);
+				}
+			}
+
 			return true;
 		}
 
@@ -295,6 +376,10 @@ public class MobileTools extends Extension
 		{
 			for (String id : new HashSet<String>(pendingRequests))
 			{
+				// Settings-based requests finish in onActivityResult, never here.
+				if (usesAllFilesAccess(id))
+					continue;
+
 				for (String permission : androidPermissions(id))
 				{
 					if (contains(permissions, permission))
@@ -331,10 +416,25 @@ public class MobileTools extends Extension
 				// Runtime permission only exists from Android 13 (API 33).
 				return Build.VERSION.SDK_INT >= 33 ? new String[] { "android.permission.POST_NOTIFICATIONS" } : new String[0];
 
-			case "photos":
+			case "images":
 				return Build.VERSION.SDK_INT >= 33
 					? new String[] { "android.permission.READ_MEDIA_IMAGES" }
 					: new String[] { "android.permission.READ_EXTERNAL_STORAGE" };
+
+			case "audio":
+				return Build.VERSION.SDK_INT >= 33
+					? new String[] { "android.permission.READ_MEDIA_AUDIO" }
+					: new String[] { "android.permission.READ_EXTERNAL_STORAGE" };
+
+			case "storage":
+				// Has no effect from Android 13, where media access moved to READ_MEDIA_*.
+				return Build.VERSION.SDK_INT >= 33
+					? new String[0]
+					: new String[] { "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE" };
+
+			case "external_storage":
+				// Android 11+ uses "All files access" instead, see usesAllFilesAccess().
+				return new String[] { "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE" };
 
 			default:
 				return new String[0];
