@@ -3,11 +3,14 @@ package mobiletools.mods;
 import haxe.Json;
 import haxe.io.Bytes;
 import haxe.io.Path;
+import mobiletools.HapticLibrary;
+import mobiletools.HapticPattern;
 import mobiletools.MobileTools;
 import mobiletools.Permissions;
 import mobiletools.StorageDirectory;
 import mobiletools.mods.ModInfo;
 import mobiletools.scripting.Script;
+import mobiletools.scripting.ScriptApi;
 
 /**
  * Finds, enables and runs mods.
@@ -435,6 +438,9 @@ class ModManager
 				return fail(mod, 'Needs the mod "$dependency", which could not be enabled: ' + required.error);
 		}
 
+		// Before the scripts run, so patterns they save with haptics.define() while loading are kept.
+		mod.setHaptics(loadHaptics(mod));
+
 		// All or nothing: a half-loaded mod is worse than a disabled one.
 		var loaded:Array<Script> = [];
 
@@ -469,6 +475,7 @@ class ModManager
 			callMod(mod, 'onUnload');
 
 		mod.setScripts([]);
+		mod.setHaptics(new Map());
 		mod.setEnabled(false);
 	}
 
@@ -510,6 +517,13 @@ class ModManager
 		for (key => value in globals)
 			variables.set(key, value);
 
+		// Patterns a script saves belong to its mod, so disabling the mod takes them away again.
+		variables.set('haptics', ScriptApi.createHapticsApi(function(name, pattern)
+		{
+			mod.scriptHaptics.set(name, pattern);
+			syncHaptics();
+		}));
+
 		variables.set('mod', {
 			id: mod.id,
 			name: mod.name,
@@ -528,8 +542,69 @@ class ModManager
 		return variables;
 	}
 
+	/**
+	 * Reads every `haptics/*.json` of the mod. A pattern is named by its `name` field, or else by the file name.
+	 * A broken file is reported and skipped, it doesn't stop the mod from loading.
+	 */
+	private static function loadHaptics(mod:Mod):Map<String, HapticPattern>
+	{
+		var patterns:Map<String, HapticPattern> = new Map();
+
+		for (file in mod.list('haptics'))
+		{
+			if (!StringTools.endsWith(file.toLowerCase(), '.json'))
+				continue;
+
+			try
+			{
+				var pattern = HapticPattern.fromJson(mod.readText('haptics/' + file));
+
+				// A name inside the file wins over the file name.
+				if (pattern.name == null)
+					pattern.name = Path.withoutExtension(file);
+
+				patterns.set(pattern.name, pattern);
+			}
+			catch (e:Dynamic)
+			{
+				report(mod.id, 'haptics/' + file + ': ' + Std.string(e));
+			}
+		}
+
+		return patterns;
+	}
+
+	/**
+	 * Publishes the haptic patterns of every enabled mod to `HapticLibrary`, so `Haptics.playNamed()` and scripts find
+	 * them. Later mods win, and all of them win over the app's own patterns and the built in ones.
+	 */
+	private static function syncHaptics():Void
+	{
+		HapticLibrary.removeLayersWithPrefix('mod:');
+
+		for (i in 0...list.length)
+		{
+			var mod = list[i];
+
+			if (!mod.enabled)
+				continue;
+
+			var patterns:Map<String, HapticPattern> = new Map();
+
+			for (name => pattern in mod.haptics)
+				patterns.set(name, pattern);
+
+			for (name => pattern in mod.scriptHaptics)
+				patterns.set(name, pattern);
+
+			if (patterns.keys().hasNext())
+				HapticLibrary.setLayer('mod:' + mod.id, HapticLibrary.PRIORITY_MODS + i, patterns);
+		}
+	}
+
 	private static function fail(mod:Mod, message:String):Bool
 	{
+		mod.setHaptics(new Map());
 		mod.setError(message);
 		report(mod.id, message);
 		return false;
@@ -543,6 +618,8 @@ class ModManager
 
 	private static function changed():Void
 	{
+		syncHaptics();
+
 		if (onChanged != null)
 			onChanged();
 	}

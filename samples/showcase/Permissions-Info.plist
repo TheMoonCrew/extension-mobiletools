@@ -12,6 +12,10 @@
 	<string>The showcase asks for photo library access to demonstrate the permission prompt.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>The showcase asks for media library access to demonstrate the permission prompt.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>The showcase asks for background location access to demonstrate the permission prompt.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>The showcase asks for tracking permission to demonstrate the permission prompt.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>The showcase asks for Bluetooth access to demonstrate the permission prompt.</string>
 	<key>NSContactsUsageDescription</key>

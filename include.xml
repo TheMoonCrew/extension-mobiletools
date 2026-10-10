@@ -28,9 +28,11 @@
 		<dependency name="MediaPlayer.framework" />
 		<dependency name="Contacts.framework" />
 		<dependency name="CoreBluetooth.framework" />
+		<dependency name="CoreHaptics.framework" />
 		<dependency name="CoreMotion.framework" />
 		<dependency name="EventKit.framework" />
 		<dependency name="LocalAuthentication.framework" />
+		<dependency name="AppTrackingTransparency.framework" />
 		<dependency name="UserNotifications.framework" />
 
 	</section>

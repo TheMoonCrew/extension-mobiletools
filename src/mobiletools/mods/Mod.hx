@@ -2,6 +2,7 @@ package mobiletools.mods;
 
 import haxe.Json;
 import haxe.io.Bytes;
+import mobiletools.HapticPattern;
 import mobiletools.mods.ModInfo;
 import mobiletools.scripting.Script;
 
@@ -26,6 +27,12 @@ class Mod
 
 	/** Scripts loaded while enabled, in run order. */
 	public var scripts(default, null):Array<Script> = [];
+
+	/** Haptic patterns from the mod's `haptics/` folder, by name. Filled while enabled. */
+	public var haptics(default, null):Map<String, HapticPattern> = new Map();
+
+	/** Haptic patterns the mod's scripts saved with `haptics.define()`. Cleared when the mod is disabled. */
+	public var scriptHaptics(default, null):Map<String, HapticPattern> = new Map();
 
 	public var id(get, never):String;
 	public var name(get, never):String;
@@ -106,6 +113,13 @@ class Mod
 	private function setScripts(value:Array<Script>):Void
 	{
 		scripts = value;
+	}
+
+	@:allow(mobiletools.mods.ModManager)
+	private function setHaptics(files:Map<String, HapticPattern>):Void
+	{
+		haptics = files;
+		scriptHaptics = new Map();
 	}
 
 	private inline function get_id():String

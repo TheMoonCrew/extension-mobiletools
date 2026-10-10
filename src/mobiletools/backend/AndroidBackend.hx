@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.HapticCapabilities;
+import mobiletools.HapticPattern;
 import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
@@ -30,6 +32,9 @@ class AndroidBackend implements IBackend
 	private static var impactJNI:Dynamic;
 	private static var notificationJNI:Dynamic;
 	private static var selectionJNI:Dynamic;
+	private static var playWaveformJNI:Dynamic;
+	private static var cancelHapticsJNI:Dynamic;
+	private static var getHapticCapabilitiesJNI:Dynamic;
 	private static var checkPermissionJNI:Dynamic;
 	private static var requestPermissionJNI:Dynamic;
 	private static var isPermissionRequestPendingJNI:Dynamic;
@@ -117,6 +122,35 @@ class AndroidBackend implements IBackend
 			selectionJNI = JNI.createStaticMethod(JAVA_CLASS, 'selection', '()V');
 
 		selectionJNI();
+	}
+
+	public function playHapticPattern(pattern:HapticPattern):Void
+	{
+		var waveform = pattern.toWaveformString();
+
+		if (waveform == '')
+			return;
+
+		if (playWaveformJNI == null)
+			playWaveformJNI = JNI.createStaticMethod(JAVA_CLASS, 'playWaveform', '(Ljava/lang/String;)V');
+
+		playWaveformJNI(waveform);
+	}
+
+	public function cancelHaptics():Void
+	{
+		if (cancelHapticsJNI == null)
+			cancelHapticsJNI = JNI.createStaticMethod(JAVA_CLASS, 'cancelHaptics', '()V');
+
+		cancelHapticsJNI();
+	}
+
+	public function getHapticCapabilities():HapticCapabilities
+	{
+		if (getHapticCapabilitiesJNI == null)
+			getHapticCapabilitiesJNI = JNI.createStaticMethod(JAVA_CLASS, 'getHapticCapabilities', '()I');
+
+		return HapticCapabilitiesTools.fromBits(getHapticCapabilitiesJNI());
 	}
 
 	public function checkPermission(permission:Permission):PermissionStatus

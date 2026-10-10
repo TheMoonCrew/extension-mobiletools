@@ -1,6 +1,7 @@
 package com.mobiletools;
 
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
@@ -10,12 +11,14 @@ import android.hardware.biometrics.BiometricManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.Settings;
 import android.view.WindowManager;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -38,8 +41,10 @@ public class MobileTools extends Extension
 	private static final int STATUS_RESTRICTED = 4;
 
 	private static final int PERMISSION_REQUEST_CODE = 7391;
-	private static final int ALL_FILES_REQUEST_CODE = 7392;
 	private static final String PREFS_NAME = "mobiletools_permissions";
+
+	/** Far more than any real pattern needs (HapticPattern allows 256 events), but stops absurd input early. */
+	private static final int MAX_WAVEFORM_SEGMENTS = 1024;
 
 	/** Permission ids (see mobiletools.Permission) whose system prompt is currently showing. */
 	private static final Set<String> pendingRequests = Collections.synchronizedSet(new HashSet<String>());
@@ -206,6 +211,118 @@ public class MobileTools extends Extension
 	}
 
 	/**
+	 * Plays a custom pattern. data is "milliseconds:amplitude" pairs joined by commas, e.g. "0:0,30:255,60:0,30:120"
+	 * (amplitude 0-255, 0 meaning off), as produced by HapticPattern.toWaveformString(). Replaces a running vibration.
+	 * Malformed data is ignored rather than throwing, since it ultimately comes from mods.
+	 */
+	@SuppressWarnings("deprecation")
+	public static void playWaveform(String data)
+	{
+		Vibrator vibrator = getVibrator();
+
+		if (vibrator == null || !vibrator.hasVibrator() || data == null || data.length() == 0)
+			return;
+
+		String[] pairs = data.split(",");
+
+		if (pairs.length == 0 || pairs.length > MAX_WAVEFORM_SEGMENTS)
+			return;
+
+		long[] timings = new long[pairs.length];
+		int[] amplitudes = new int[pairs.length];
+
+		try
+		{
+			for (int i = 0; i < pairs.length; i++)
+			{
+				String[] parts = pairs[i].split(":");
+				timings[i] = Long.parseLong(parts[0]);
+				amplitudes[i] = Integer.parseInt(parts[1]);
+
+				if (timings[i] < 0 || amplitudes[i] < 0 || amplitudes[i] > 255)
+					return;
+			}
+		}
+		catch (NumberFormatException e)
+		{
+			return;
+		}
+		catch (ArrayIndexOutOfBoundsException e)
+		{
+			return;
+		}
+
+		vibrator.cancel();
+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+		{
+			// Without amplitude control a non-zero amplitude is not reliably honoured, so give it plain on/off timings.
+			if (vibrator.hasAmplitudeControl())
+				vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1));
+			else
+				vibrator.vibrate(VibrationEffect.createWaveform(onOffTimings(timings, amplitudes), -1));
+		}
+		else
+		{
+			vibrator.vibrate(onOffTimings(timings, amplitudes), -1);
+		}
+	}
+
+	public static void cancelHaptics()
+	{
+		cancelVibration();
+	}
+
+	/** Bit field matching HapticCapabilitiesTools.fromBits(): 1 can vibrate, 2 amplitude control, 4 sharpness control (never here). */
+	public static int getHapticCapabilities()
+	{
+		Vibrator vibrator = getVibrator();
+
+		if (vibrator == null || !vibrator.hasVibrator())
+			return 0;
+
+		int bits = 1;
+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator.hasAmplitudeControl())
+			bits |= 2;
+
+		return bits;
+	}
+
+	/** Turns segments with amplitudes into the off/on/off/on... timings the older vibrate(long[]) API expects. */
+	private static long[] onOffTimings(long[] timings, int[] amplitudes)
+	{
+		ArrayList<Long> result = new ArrayList<Long>();
+		boolean on = false;
+		long current = 0;
+
+		for (int i = 0; i < timings.length; i++)
+		{
+			boolean segmentOn = amplitudes[i] > 0;
+
+			if (segmentOn == on)
+			{
+				current += timings[i];
+			}
+			else
+			{
+				result.add(current);
+				current = timings[i];
+				on = segmentOn;
+			}
+		}
+
+		result.add(current);
+
+		long[] array = new long[result.size()];
+
+		for (int i = 0; i < array.length; i++)
+			array[i] = result.get(i);
+
+		return array;
+	}
+
+	/**
 	 * Plays the system's predefined effect on Android 10+. Older versions get a short one-shot
 	 * pulse of the given length and amplitude (1-255), or just the length before Android 8.
 	 */
@@ -246,8 +363,10 @@ public class MobileTools extends Extension
 	{
 		Activity activity = Extension.mainActivity;
 
-		if (usesAllFilesAccess(id))
-			return checkAllFilesAccess();
+		SettingsPermission settings = findSettingsPermission(id);
+
+		if (settings != null)
+			return checkSettingsPermission(settings);
 
 		if ("biometrics".equals(id))
 			return checkBiometrics();
@@ -290,13 +409,19 @@ public class MobileTools extends Extension
 		final Activity activity = Extension.mainActivity;
 		final String[] permissions = androidPermissions(id);
 
-		if (usesAllFilesAccess(id))
+		SettingsPermission settings = findSettingsPermission(id);
+
+		if (settings != null)
 		{
-			requestAllFilesAccess(activity);
+			requestSettingsPermission(activity, settings);
 			return;
 		}
 
 		if (activity == null || permissions.length == 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M)
+			return;
+
+		// From Android 11 background location can only be requested once foreground location is granted.
+		if ("location_always".equals(id) && Build.VERSION.SDK_INT >= 30 && checkPermission("location") != STATUS_GRANTED)
 			return;
 
 		if (checkPermission(id) == STATUS_GRANTED || !pendingRequests.add(id))
@@ -378,24 +503,103 @@ public class MobileTools extends Extension
 		return manager.canAuthenticate();
 	}
 
-	/** "All files access" (Android 11+) is a settings switch rather than a runtime permission. */
-	private static boolean usesAllFilesAccess(String id)
+	/**
+	 * Permissions the user grants on a system settings screen rather than in a dialog.
+	 * They are only "special" from the Android version in minSdk on; before that the permission
+	 * either doesn't exist (granted) or is a regular runtime permission, see androidPermissions().
+	 */
+	private static final class SettingsPermission
 	{
-		return "external_storage".equals(id) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R;
+		final String id;
+		final int minSdk;
+		final String action;
+		final String fallbackAction;
+		final int requestCode;
+
+		SettingsPermission(String id, int minSdk, String action, String fallbackAction, int requestCode)
+		{
+			this.id = id;
+			this.minSdk = minSdk;
+			this.action = action;
+			this.fallbackAction = fallbackAction;
+			this.requestCode = requestCode;
+		}
 	}
 
-	private static int checkAllFilesAccess()
+	// Action names are written out so this still compiles against an older Android SDK than the one that added them.
+	private static final SettingsPermission[] SETTINGS_PERMISSIONS = {
+		new SettingsPermission("external_storage", 30, "android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION", "android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION", 7392),
+		new SettingsPermission("overlay", 23, "android.settings.action.MANAGE_OVERLAY_PERMISSION", null, 7393),
+		new SettingsPermission("ignore_battery_optimizations", 23, "android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", null, 7394),
+		new SettingsPermission("exact_alarm", 31, "android.settings.REQUEST_SCHEDULE_EXACT_ALARM", null, 7395),
+		new SettingsPermission("write_settings", 23, "android.settings.action.MANAGE_WRITE_SETTINGS", null, 7396),
+		new SettingsPermission("install_packages", 26, "android.settings.MANAGE_UNKNOWN_APP_SOURCES", null, 7397)
+	};
+
+	/** The settings screen permission for id on this Android version, or null if id is a regular permission here. */
+	private static SettingsPermission findSettingsPermission(String id)
 	{
-		if (Environment.isExternalStorageManager())
+		for (SettingsPermission permission : SETTINGS_PERMISSIONS)
+		{
+			if (permission.id.equals(id) && Build.VERSION.SDK_INT >= permission.minSdk)
+				return permission;
+		}
+
+		return null;
+	}
+
+	private static int checkSettingsPermission(SettingsPermission permission)
+	{
+		Context context = Extension.mainContext;
+
+		if (context == null)
+			return STATUS_NOT_DETERMINED;
+
+		boolean granted = false;
+
+		switch (permission.id)
+		{
+			case "external_storage":
+				granted = Environment.isExternalStorageManager();
+				break;
+
+			case "overlay":
+				granted = Settings.canDrawOverlays(context);
+				break;
+
+			case "ignore_battery_optimizations":
+			{
+				PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+				granted = power != null && power.isIgnoringBatteryOptimizations(context.getPackageName());
+				break;
+			}
+
+			case "exact_alarm":
+			{
+				AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+				granted = alarms != null && alarms.canScheduleExactAlarms();
+				break;
+			}
+
+			case "write_settings":
+				granted = Settings.System.canWrite(context);
+				break;
+
+			case "install_packages":
+				granted = context.getPackageManager().canRequestPackageInstalls();
+				break;
+		}
+
+		if (granted)
 			return STATUS_GRANTED;
 
 		// The screen can always be opened again, so a refusal is never permanent.
-		return wasRequested("external_storage") ? STATUS_DENIED : STATUS_NOT_DETERMINED;
+		return wasRequested(permission.id) ? STATUS_DENIED : STATUS_NOT_DETERMINED;
 	}
 
-	private static void requestAllFilesAccess(final Activity activity)
+	private static void requestSettingsPermission(final Activity activity, final SettingsPermission permission)
 	{
-		if (activity == null || checkAllFilesAccess() == STATUS_GRANTED || !pendingRequests.add("external_storage"))
+		if (activity == null || checkSettingsPermission(permission) == STATUS_GRANTED || !pendingRequests.add(permission.id))
 			return;
 
 		activity.runOnUiThread(new Runnable()
@@ -407,32 +611,41 @@ public class MobileTools extends Extension
 
 				try
 				{
-					activity.startActivityForResult(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, packageUri), ALL_FILES_REQUEST_CODE);
+					activity.startActivityForResult(new Intent(permission.action, packageUri), permission.requestCode);
+					return;
 				}
 				catch (ActivityNotFoundException e)
 				{
-					// Some devices lack the per-app screen, so fall back to the list of all apps.
-					try
-					{
-						activity.startActivityForResult(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), ALL_FILES_REQUEST_CODE);
-					}
-					catch (ActivityNotFoundException e2)
-					{
-						pendingRequests.remove("external_storage");
-					}
+					// Some devices lack the per-app screen, try the next best thing below.
+				}
+
+				try
+				{
+					Intent fallback = permission.fallbackAction != null
+						? new Intent(permission.fallbackAction)
+						: new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri);
+
+					activity.startActivityForResult(fallback, permission.requestCode);
+				}
+				catch (ActivityNotFoundException e)
+				{
+					pendingRequests.remove(permission.id);
 				}
 			}
 		});
 	}
 
-	/** Called when the user comes back from the "All files access" settings screen. */
+	/** Called when the user comes back from one of the settings screens above. */
 	@Override
 	public boolean onActivityResult(int requestCode, int resultCode, Intent data)
 	{
-		if (requestCode == ALL_FILES_REQUEST_CODE)
+		for (SettingsPermission permission : SETTINGS_PERMISSIONS)
 		{
-			markRequested("external_storage");
-			pendingRequests.remove("external_storage");
+			if (permission.requestCode == requestCode)
+			{
+				markRequested(permission.id);
+				pendingRequests.remove(permission.id);
+			}
 		}
 
 		return true;
@@ -451,7 +664,7 @@ public class MobileTools extends Extension
 			{
 				for (String id : new HashSet<String>(pendingRequests))
 				{
-					if (!usesAllFilesAccess(id))
+					if (findSettingsPermission(id) == null)
 						pendingRequests.remove(id);
 				}
 			}
@@ -464,7 +677,7 @@ public class MobileTools extends Extension
 			for (String id : new HashSet<String>(pendingRequests))
 			{
 				// Settings-based requests finish in onActivityResult, never here.
-				if (usesAllFilesAccess(id))
+				if (findSettingsPermission(id) != null)
 					continue;
 
 				for (String permission : androidPermissions(id))
@@ -524,6 +737,22 @@ public class MobileTools extends Extension
 					? new String[] { "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN" }
 					: new String[0];
 
+			case "location_always":
+				// Background location is a separate permission from Android 10. Before that, foreground access already covers it.
+				return Build.VERSION.SDK_INT >= 29
+					? new String[] { "android.permission.ACCESS_BACKGROUND_LOCATION" }
+					: new String[] { "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION" };
+
+			case "phone":
+				return new String[] { "android.permission.READ_PHONE_STATE" };
+
+			case "nearby_wifi":
+				// Introduced in Android 13; before that, scanning Wi-Fi was covered by the location permission.
+				return Build.VERSION.SDK_INT >= 33 ? new String[] { "android.permission.NEARBY_WIFI_DEVICES" } : new String[0];
+
+			case "body_sensors":
+				return new String[] { "android.permission.BODY_SENSORS" };
+
 			case "contacts":
 				return new String[] { "android.permission.READ_CONTACTS" };
 
@@ -541,7 +770,7 @@ public class MobileTools extends Extension
 					: new String[] { "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE" };
 
 			case "external_storage":
-				// Android 11+ uses "All files access" instead, see usesAllFilesAccess().
+				// Android 11+ uses "All files access" instead, see SETTINGS_PERMISSIONS.
 				return new String[] { "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE" };
 
 			default:

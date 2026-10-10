@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.HapticCapabilities;
+import mobiletools.HapticPattern;
 import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
@@ -76,6 +78,21 @@ class IOSBackend implements IBackend
 	public function selection():Void
 	{
 		IOSNative.selection();
+	}
+
+	public function playHapticPattern(pattern:HapticPattern):Void
+	{
+		IOSNative.playHapticPattern(ConstCharStar.fromString(pattern.toCompact()));
+	}
+
+	public function cancelHaptics():Void
+	{
+		IOSNative.cancelHaptics();
+	}
+
+	public function getHapticCapabilities():HapticCapabilities
+	{
+		return HapticCapabilitiesTools.fromBits(IOSNative.getHapticCapabilities());
 	}
 
 	public function checkPermission(permission:Permission):PermissionStatus

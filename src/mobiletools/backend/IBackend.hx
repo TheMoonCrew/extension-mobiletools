@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.HapticCapabilities;
+import mobiletools.HapticPattern;
 import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
@@ -31,6 +33,14 @@ interface IBackend
 	public function impact(style:ImpactStyle):Void;
 	public function notification(type:NotificationType):Void;
 	public function selection():Void;
+
+	/** Plays the pattern, replacing any pattern still playing. The pattern is already scaled by `Haptics.intensity`. */
+	public function playHapticPattern(pattern:HapticPattern):Void;
+
+	/** Stops a pattern started with `playHapticPattern()`. */
+	public function cancelHaptics():Void;
+
+	public function getHapticCapabilities():HapticCapabilities;
 
 	/** Current status, without prompting. Must be cheap and synchronous. */
 	public function checkPermission(permission:Permission):PermissionStatus;

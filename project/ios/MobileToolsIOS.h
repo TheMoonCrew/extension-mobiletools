@@ -18,6 +18,13 @@ namespace mobiletools
 		// directory: mobiletools.StorageDirectory. The pointer stays valid until the next call.
 		const char* getDirectory(int directory);
 
+		// events: "time:duration:intensity:sharpness" per event joined by commas, see HapticPattern.toCompact().
+		// Replaces a pattern that is still playing. getHapticCapabilities() returns the bits 1 can vibrate,
+		// 2 amplitude control, 4 sharpness control.
+		void playHapticPattern(const char* events);
+		void cancelHaptics();
+		int getHapticCapabilities();
+
 		// style: mobiletools.ImpactStyle, type: mobiletools.NotificationType
 		void impact(int style);
 		void notification(int type);

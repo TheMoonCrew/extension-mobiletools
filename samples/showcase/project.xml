@@ -31,6 +31,15 @@
 		<config:android permission="android.permission.WRITE_CALENDAR" />
 		<config:android permission="android.permission.ACTIVITY_RECOGNITION" />
 		<config:android permission="android.permission.USE_BIOMETRIC" />
+		<config:android permission="android.permission.ACCESS_BACKGROUND_LOCATION" />
+		<config:android permission="android.permission.READ_PHONE_STATE" />
+		<config:android permission="android.permission.NEARBY_WIFI_DEVICES" />
+		<config:android permission="android.permission.BODY_SENSORS" />
+		<config:android permission="android.permission.SYSTEM_ALERT_WINDOW" />
+		<config:android permission="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+		<config:android permission="android.permission.SCHEDULE_EXACT_ALARM" />
+		<config:android permission="android.permission.WRITE_SETTINGS" />
+		<config:android permission="android.permission.REQUEST_INSTALL_PACKAGES" />
 		<config:android permission="android.permission.READ_EXTERNAL_STORAGE" />
 		<config:android permission="android.permission.WRITE_EXTERNAL_STORAGE" />
 		<config:android permission="android.permission.MANAGE_EXTERNAL_STORAGE" />

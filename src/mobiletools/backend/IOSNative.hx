@@ -37,6 +37,15 @@ extern class IOSNative
 	@:native('mobiletools::ios::selection')
 	static function selection():Void;
 
+	@:native('mobiletools::ios::playHapticPattern')
+	static function playHapticPattern(events:ConstCharStar):Void;
+
+	@:native('mobiletools::ios::cancelHaptics')
+	static function cancelHaptics():Void;
+
+	@:native('mobiletools::ios::getHapticCapabilities')
+	static function getHapticCapabilities():Int;
+
 	@:native('mobiletools::ios::checkPermission')
 	static function checkPermission(permission:ConstCharStar):Int;
 

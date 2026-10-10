@@ -81,6 +81,15 @@ class MobileTools
 	}
 
 	/**
+	 * Replaces the backend that talks to the platform. For tests, or to support a platform this library doesn't.
+	 * Call it before anything else uses `MobileTools`.
+	 */
+	public static function setBackend(newBackend:IBackend):Void
+	{
+		backend = newBackend;
+	}
+
+	/**
 	 * Returns the absolute path of a well-known folder, without a trailing slash.
 	 *
 	 * On desktop every folder is the working directory. Returns an empty string when the

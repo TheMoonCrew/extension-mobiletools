@@ -22,6 +22,57 @@ enum abstract Permission(String) to String
 	/** Location while the app is in use (Android: fine + coarse). */
 	var LOCATION = 'location';
 
+	/**
+	 * Location while the app is in the background. Request `LOCATION` first: from Android 11 the system
+	 * refuses background location until foreground location is granted, and then sends the user to a
+	 * settings screen instead of showing a dialog. On iOS it upgrades "while using" to "always" (asked once).
+	 */
+	var LOCATION_ALWAYS = 'location_always';
+
+	/**
+	 * Permission to track the user across other companies' apps and websites (App Tracking Transparency).
+	 * Needed before reading the advertising identifier. iOS 14+ only; always `GRANTED` elsewhere.
+	 */
+	var TRACKING = 'tracking';
+
+	/** Reading the phone state, e.g. the network type or whether a call is active. Android only; always `GRANTED` on iOS. */
+	var PHONE = 'phone';
+
+	/**
+	 * Discovering nearby Wi-Fi devices without needing location (Android 13+).
+	 * Always `GRANTED` before that, and on iOS.
+	 */
+	var NEARBY_WIFI = 'nearby_wifi';
+
+	/** Body sensors such as a heart rate monitor (Android). iOS keeps these behind HealthKit, so it reports `GRANTED`. */
+	var BODY_SENSORS = 'body_sensors';
+
+	/**
+	 * Drawing over other apps (`SYSTEM_ALERT_WINDOW`). Granted on a settings screen, not a dialog. Android only.
+	 */
+	var OVERLAY = 'overlay';
+
+	/**
+	 * Running without battery optimizations, so the system doesn't pause the app in the background
+	 * (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`). Asks with a system dialog. Android only, and restricted by Google Play.
+	 */
+	var IGNORE_BATTERY_OPTIMIZATIONS = 'ignore_battery_optimizations';
+
+	/**
+	 * Scheduling exact alarms (`SCHEDULE_EXACT_ALARM`). Granted on a settings screen from Android 12;
+	 * always `GRANTED` before that and on iOS.
+	 */
+	var EXACT_ALARM = 'exact_alarm';
+
+	/** Changing system settings such as the brightness (`WRITE_SETTINGS`). Granted on a settings screen. Android only. */
+	var WRITE_SETTINGS = 'write_settings';
+
+	/**
+	 * Installing other apps, e.g. an in-app updater (`REQUEST_INSTALL_PACKAGES`). Granted on a settings screen
+	 * from Android 8; always `GRANTED` before that and on iOS. Restricted by Google Play.
+	 */
+	var INSTALL_PACKAGES = 'install_packages';
+
 	/** Posting notifications. */
 	var NOTIFICATIONS = 'notifications';
 

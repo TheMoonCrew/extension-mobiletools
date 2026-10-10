@@ -1,6 +1,8 @@
 package mobiletools.backend;
 
 import mobiletools.DeviceInfo;
+import mobiletools.HapticCapabilities;
+import mobiletools.HapticPattern;
 import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
@@ -48,6 +50,15 @@ class NullBackend implements IBackend
 	public function notification(type:NotificationType):Void {}
 
 	public function selection():Void {}
+
+	public function playHapticPattern(pattern:HapticPattern):Void {}
+
+	public function cancelHaptics():Void {}
+
+	public function getHapticCapabilities():HapticCapabilities
+	{
+		return HapticCapabilitiesTools.none();
+	}
 
 	public function checkPermission(permission:Permission):PermissionStatus
 	{

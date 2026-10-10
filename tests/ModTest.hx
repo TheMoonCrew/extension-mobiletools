@@ -1,3 +1,4 @@
+import Check.*;
 import mobiletools.mods.Mod;
 import mobiletools.mods.ModFiles;
 import mobiletools.mods.ModInfo;
@@ -14,38 +15,6 @@ import sys.FileSystem;
  */
 class ModTest
 {
-	static var failures:Int = 0;
-	static var checks:Int = 0;
-
-	static function check(condition:Bool, description:String):Void
-	{
-		checks++;
-
-		if (!condition)
-		{
-			failures++;
-			Sys.println('FAIL: $description');
-		}
-	}
-
-	static function equals(actual:Dynamic, expected:Dynamic, description:String):Void
-	{
-		check(actual == expected, '$description (expected "$expected", got "$actual")');
-	}
-
-	static function throwsWith(action:Void->Void, expectedPart:String, description:String):Void
-	{
-		try
-		{
-			action();
-			check(false, '$description (did not throw)');
-		}
-		catch (e:Dynamic)
-		{
-			check(Std.string(e).indexOf(expectedPart) >= 0, '$description (error was "$e", expected it to contain "$expectedPart")');
-		}
-	}
-
 	static function write(path:String, content:String):Void
 	{
 		ModFiles.ensureDirectory(haxe.io.Path.directory(path));
@@ -88,8 +57,7 @@ class ModTest
 		Sys.setCwd(original);
 		deleteRecursive(temp);
 
-		Sys.println(failures == 0 ? 'OK: $checks checks passed' : '$failures of $checks checks FAILED');
-		Sys.exit(failures == 0 ? 0 : 1);
+		Sys.exit(Check.finish());
 	}
 
 	// ---------------------------------------------------------------- scripting

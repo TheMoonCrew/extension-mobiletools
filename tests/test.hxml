@@ -3,3 +3,10 @@
 -lib hscript
 -main ModTest
 --interp
+
+--next
+-cp src
+-cp tests
+-lib hscript
+-main HapticTest
+--interp

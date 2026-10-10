@@ -2,8 +2,10 @@
 
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <AppTrackingTransparency/AppTrackingTransparency.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <Contacts/Contacts.h>
+#import <CoreHaptics/CoreHaptics.h>
 #import <CoreBluetooth/CoreBluetooth.h>
 #import <CoreLocation/CoreLocation.h>
 #import <CoreMotion/CoreMotion.h>
@@ -15,6 +17,7 @@
 
 #include <cstdlib>
 #include <string>
+#include <vector>
 #include <sys/utsname.h>
 
 // Compiled with ARC (see mobiletools_ios.xml).
@@ -130,6 +133,29 @@ static int locationStatus()
 #pragma clang diagnostic pop
 }
 
+static NSString* const kAskedAlwaysKey = @"mobiletools.asked.location_always";
+
+static int locationAlwaysStatus()
+{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	CLAuthorizationStatus current = [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+
+	switch (current)
+	{
+		case kCLAuthorizationStatusAuthorizedAlways:
+			return StatusGranted;
+
+		case kCLAuthorizationStatusAuthorizedWhenInUse:
+			// iOS offers the upgrade to "always" once, so it is only final after we asked.
+			return [[NSUserDefaults standardUserDefaults] boolForKey:kAskedAlwaysKey] ? StatusDeniedPermanently : StatusNotDetermined;
+
+		default:
+			return locationStatus();
+	}
+}
+
 @interface MTLocationDelegate : NSObject <CLLocationManagerDelegate>
 @end
 
@@ -152,6 +178,11 @@ static int locationStatus()
 	// The delegate is also called once with the current state when it is attached.
 	if (locationStatus() != StatusNotDetermined)
 		setPending(@"location", NO);
+
+	// Reaching "always", or being refused outright, is final. Keeping "while using" at the upgrade
+	// prompt doesn't call the delegate at all, which is what the app-became-active handling below covers.
+	if (locationAlwaysStatus() == StatusGranted || locationStatus() == StatusDeniedPermanently)
+		setPending(@"location_always", NO);
 }
 
 @end
@@ -227,6 +258,26 @@ static int notificationsStatus()
 
 	dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC));
 	return result;
+}
+
+#pragma mark - Tracking
+
+static int trackingStatus()
+{
+	if (@available(iOS 14.0, *))
+	{
+		// ATTrackingManagerAuthorizationStatus: 0 notDetermined, 1 restricted, 2 denied, 3 authorized
+		switch ((NSInteger)[ATTrackingManager trackingAuthorizationStatus])
+		{
+			case 0: return StatusNotDetermined;
+			case 1: return StatusRestricted;
+			case 2: return StatusDeniedPermanently;
+			default: return StatusGranted;
+		}
+	}
+
+	// Before iOS 14 there was nothing to ask.
+	return StatusGranted;
 }
 
 #pragma mark - Bluetooth
@@ -331,6 +382,126 @@ static int biometricsStatus()
 	}
 }
 
+#pragma mark - Haptic patterns
+
+struct HapticEvent
+{
+	double time;      // milliseconds
+	double duration;  // milliseconds, 0 for a transient tap
+	double intensity; // 0-1
+	double sharpness; // 0-1
+};
+
+static NSUInteger hapticGeneration = 0; // bumped to cancel ticks still queued by the fallback
+static id hapticEngine = nil;           // CHHapticEngine, kept as id so this compiles for older deployment targets
+static id hapticPlayer = nil;           // id<CHHapticPatternPlayer>
+
+// text: "time:duration:intensity:sharpness" joined by commas, see HapticPattern.toCompact().
+static std::vector<HapticEvent> parseHapticEvents(const char* text)
+{
+	std::vector<HapticEvent> events;
+
+	for (NSString* item in [toNSString(text) componentsSeparatedByString:@","])
+	{
+		NSArray<NSString*>* parts = [item componentsSeparatedByString:@":"];
+
+		// The pattern is capped on the Haxe side, this only protects against corrupt input.
+		if (parts.count != 4 || events.size() >= 512)
+			continue;
+
+		events.push_back({ parts[0].doubleValue, parts[1].doubleValue, parts[2].doubleValue, parts[3].doubleValue });
+	}
+
+	return events;
+}
+
+static BOOL coreHapticsSupported()
+{
+	if (@available(iOS 13.0, *))
+		return [CHHapticEngine capabilitiesForHardware].supportsHaptics;
+
+	return NO;
+}
+
+// Devices without Core Haptics (older iPhones, iPads) only have the impact generators, so tap once per event.
+static void playHapticFallback(const std::vector<HapticEvent>& events)
+{
+	NSUInteger generation = hapticGeneration;
+
+	for (const HapticEvent& event : events)
+	{
+		// A held vibration becomes a run of ticks, since the generators cannot sustain.
+		int ticks = event.duration > 0 ? MAX(1, (int)(event.duration / 60)) : 1;
+		int style = event.intensity > 0.66 ? 2 : (event.intensity > 0.33 ? 1 : 0);
+
+		for (int i = 0; i < ticks; i++)
+		{
+			double delay = (event.time + i * 60) / 1000.0;
+
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+				if (generation == hapticGeneration)
+					mobiletools::ios::impact(style);
+			});
+		}
+	}
+}
+
+API_AVAILABLE(ios(13.0))
+static BOOL playHapticCore(const std::vector<HapticEvent>& events)
+{
+	NSError* error = nil;
+	CHHapticEngine* engine = hapticEngine;
+
+	if (engine == nil)
+	{
+		engine = [[CHHapticEngine alloc] initAndReturnError:&error];
+
+		if (engine == nil)
+			return NO;
+
+		engine.autoShutdownEnabled = YES;
+
+		// The system stops the engine when the app is backgrounded or audio is interrupted: bring it back when asked to.
+		__weak CHHapticEngine* weakEngine = engine;
+		engine.resetHandler = ^{ [weakEngine startAndReturnError:nil]; };
+
+		hapticEngine = engine;
+	}
+
+	if (![engine startAndReturnError:&error])
+		return NO;
+
+	NSMutableArray<CHHapticEvent*>* chEvents = [NSMutableArray array];
+
+	for (const HapticEvent& event : events)
+	{
+		CHHapticEventParameter* intensity = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticIntensity value:(float)event.intensity];
+		CHHapticEventParameter* sharpness = [[CHHapticEventParameter alloc] initWithParameterID:CHHapticEventParameterIDHapticSharpness value:(float)event.sharpness];
+
+		CHHapticEvent* chEvent = event.duration > 0
+			? [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous parameters:@[ intensity, sharpness ] relativeTime:event.time / 1000.0 duration:event.duration / 1000.0]
+			: [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticTransient parameters:@[ intensity, sharpness ] relativeTime:event.time / 1000.0];
+
+		[chEvents addObject:chEvent];
+	}
+
+	CHHapticPattern* pattern = [[CHHapticPattern alloc] initWithEvents:chEvents parameters:@[] error:&error];
+
+	if (pattern == nil)
+		return NO;
+
+	id<CHHapticPatternPlayer> player = [engine createPlayerWithPattern:pattern error:&error];
+
+	if (player == nil)
+		return NO;
+
+	// A new pattern replaces the one still playing.
+	[(id<CHHapticPatternPlayer>)hapticPlayer stopAtTime:0 error:nil];
+	hapticPlayer = player;
+
+	return [player startAtTime:0 error:&error];
+}
+
 #pragma mark - Public interface
 
 namespace mobiletools
@@ -418,6 +589,46 @@ namespace mobiletools
 
 			json = string.UTF8String;
 			return json.c_str();
+		}
+
+		void playHapticPattern(const char* events)
+		{
+			std::vector<HapticEvent> parsed = parseHapticEvents(events);
+
+			if (parsed.empty())
+				return;
+
+			runOnMain(^{
+				// Anything the fallback still has queued from an earlier pattern must not play on top of this one.
+				hapticGeneration++;
+
+				if (@available(iOS 13.0, *))
+				{
+					if (coreHapticsSupported() && playHapticCore(parsed))
+						return;
+				}
+
+				playHapticFallback(parsed);
+			});
+		}
+
+		void cancelHaptics()
+		{
+			runOnMain(^{
+				hapticGeneration++;
+
+				if (@available(iOS 13.0, *))
+					[(id<CHHapticPatternPlayer>)hapticPlayer stopAtTime:0 error:nil];
+			});
+		}
+
+		int getHapticCapabilities()
+		{
+			// 1 can vibrate, 2 amplitude control, 4 sharpness control. Core Haptics gives all three.
+			if (coreHapticsSupported())
+				return 1 | 2 | 4;
+
+			return [UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPhone ? 1 : 0;
 		}
 
 		const char* getDirectory(int directory)
@@ -529,6 +740,12 @@ namespace mobiletools
 			if ([key isEqualToString:@"location"])
 				return locationStatus();
 
+			if ([key isEqualToString:@"location_always"])
+				return locationAlwaysStatus();
+
+			if ([key isEqualToString:@"tracking"])
+				return trackingStatus();
+
 			// Videos live in the same photo library as images, so they share one system permission.
 			if ([key isEqualToString:@"images"] || [key isEqualToString:@"video"])
 				return imagesStatus();
@@ -588,6 +805,57 @@ namespace mobiletools
 
 					[locationManager requestWhenInUseAuthorization];
 				});
+			}
+			else if ([key isEqualToString:@"location_always"])
+			{
+				setPending(key, YES);
+				[[NSUserDefaults standardUserDefaults] setBool:YES forKey:kAskedAlwaysKey];
+
+				runOnMain(^{
+					if (locationManager == nil)
+					{
+						locationDelegate = [[MTLocationDelegate alloc] init];
+						locationManager = [[CLLocationManager alloc] init];
+						locationManager.delegate = locationDelegate;
+					}
+
+					// Keeping "while using" at the upgrade prompt doesn't call the delegate, so also finish when the app
+					// becomes active again after the prompt took focus. If no prompt ever shows, give up after a while.
+					__block BOOL promptShown = NO;
+					__block id resignObserver = nil;
+					__block id activeObserver = nil;
+					NSNotificationCenter* center = [NSNotificationCenter defaultCenter];
+
+					resignObserver = [center addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification* note)
+					{
+						promptShown = YES;
+						[center removeObserver:resignObserver];
+
+						activeObserver = [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification* inner)
+						{
+							[center removeObserver:activeObserver];
+							setPending(@"location_always", NO);
+						}];
+					}];
+
+					dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+						if (!promptShown)
+						{
+							[center removeObserver:resignObserver];
+							setPending(@"location_always", NO);
+						}
+					});
+
+					[locationManager requestAlwaysAuthorization];
+				});
+			}
+			else if ([key isEqualToString:@"tracking"])
+			{
+				if (@available(iOS 14.0, *))
+				{
+					setPending(key, YES);
+					[ATTrackingManager requestTrackingAuthorizationWithCompletionHandler:^(ATTrackingManagerAuthorizationStatus status) { setPending(key, NO); }];
+				}
 			}
 			else if ([key isEqualToString:@"bluetooth"])
 			{

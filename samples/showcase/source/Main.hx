@@ -1,4 +1,5 @@
 import mobiletools.DeviceInfo;
+import mobiletools.HapticPattern;
 import mobiletools.Haptics;
 import mobiletools.MobileTools;
 import mobiletools.Permission;
@@ -103,32 +104,38 @@ class Main extends Sprite
 		// ---- Permissions
 		y = section(content, 'Permissions', pad, y + 20 * u);
 
-		var permissions:Array<{permission:Permission, title:String}> = [
+		y = addPermissionRows(content, [
 			{permission: CAMERA, title: 'Camera'},
 			{permission: MICROPHONE, title: 'Microphone'},
 			{permission: LOCATION, title: 'Location (while in use)'},
+			{permission: LOCATION_ALWAYS, title: 'Location (always)'},
 			{permission: NOTIFICATIONS, title: 'Notifications'},
+			{permission: TRACKING, title: 'App tracking (iOS)'},
 			{permission: IMAGES, title: 'Images'},
 			{permission: VIDEO, title: 'Videos'},
 			{permission: AUDIO, title: 'Audio files'},
 			{permission: STORAGE, title: 'Storage'},
 			{permission: EXTERNAL_STORAGE, title: 'All files access'},
 			{permission: BLUETOOTH, title: 'Bluetooth'},
+			{permission: NEARBY_WIFI, title: 'Nearby Wi-Fi'},
 			{permission: CONTACTS, title: 'Contacts'},
 			{permission: CALENDAR, title: 'Calendar'},
+			{permission: PHONE, title: 'Phone state'},
 			{permission: MOTION, title: 'Motion and activity'},
+			{permission: BODY_SENSORS, title: 'Body sensors'},
 			{permission: BIOMETRICS, title: 'Biometrics (availability)'}
-		];
+		], pad, y, contentWidth);
 
-		for (entry in permissions)
-		{
-			var row = new PermissionRow(entry.permission, entry.title, contentWidth, u, onPermissionTap);
-			row.x = pad;
-			row.y = y;
-			content.addChild(row);
-			rows.push(row);
-			y += row.height + 8 * u;
-		}
+		// Granted on a system settings screen instead of a dialog (Android).
+		y = section(content, 'Special access', pad, y + 12 * u);
+
+		y = addPermissionRows(content, [
+			{permission: OVERLAY, title: 'Draw over other apps'},
+			{permission: IGNORE_BATTERY_OPTIMIZATIONS, title: 'Ignore battery limits'},
+			{permission: EXACT_ALARM, title: 'Exact alarms'},
+			{permission: WRITE_SETTINGS, title: 'Change system settings'},
+			{permission: INSTALL_PACKAGES, title: 'Install apps'}
+		], pad, y, contentWidth);
 
 		y = addButton(content, new Button('Open app settings', contentWidth, 44 * u, 14 * u, function()
 		{
@@ -150,6 +157,9 @@ class Main extends Sprite
 			['Warning', function() Haptics.notification(WARNING)],
 			['Error', function() Haptics.notification(ERROR)]
 		], pad, y, contentWidth, 'Haptics');
+
+		// ---- Advanced haptics
+		y = buildAdvancedHaptics(content, pad, y + 20 * u, contentWidth);
 
 		// ---- Toast, vibration, screen
 		y = section(content, 'Toast, vibration and screen', pad, y + 20 * u);
@@ -195,6 +205,78 @@ class Main extends Sprite
 	}
 
 	// ---------------------------------------------------------------- mods
+
+	/** Patterns by name (built in and from mods), a custom one built in code, and the user's settings. */
+	private function buildAdvancedHaptics(content:Sprite, x:Float, y:Float, width:Float):Float
+	{
+		y = section(content, 'Advanced haptics', x, y);
+
+		var capabilities = Haptics.capabilities;
+		var summary = capabilities.supported
+			? 'Strength control: ' + (capabilities.amplitudeControl ? 'yes' : 'no') + '. Sharpness control: ' + (capabilities.sharpnessControl ? 'yes' : 'no') + '.'
+			: 'No haptic hardware here: patterns do nothing on this device.';
+		summary += ' Pattern strength: ' + Std.int(Haptics.intensity * 100) + '%.';
+		y = place(content, Theme.text(summary, 12 * u, capabilities.supported ? Theme.MUTED : Theme.WARN, false, width), x, y) + 10 * u;
+
+		// Every pattern available right now: the built in ones, plus whatever enabled mods provide.
+		var items:Array<Array<Dynamic>> = [];
+
+		for (name in Haptics.patternNames())
+			items.push([name, function() Haptics.playNamed(name)]);
+
+		y = grid(content, items, x, y, width, 'Pattern');
+
+		y = grid(content, [
+			['Custom pattern', function()
+			{
+				Haptics.play(new HapticPattern('custom')
+					.tap(0, 1, 0.9)
+					.tap(120, 0.7, 0.9)
+					.hold(300, 250, 0.6, 0.3)
+					.ramp(600, 400, 0.6, 0));
+			}],
+			['Stop', function() Haptics.stop()]
+		], x, y + 8 * u, width, '', 2);
+
+		// The user's own settings, which also apply to scripts and mods.
+		y = grid(content, [
+			['Haptics: ' + (Haptics.enabled ? 'ON' : 'OFF'), function()
+			{
+				Haptics.enabled = !Haptics.enabled;
+				log(Haptics.enabled ? 'Haptics on' : 'Haptics off: nothing will vibrate');
+				needsRebuild = true;
+			}],
+			['Weaker', function()
+			{
+				Haptics.intensity = Math.round((Haptics.intensity - 0.25) * 100) / 100;
+				log('Pattern strength: ' + Std.int(Haptics.intensity * 100) + '%');
+				needsRebuild = true;
+			}],
+			['Stronger', function()
+			{
+				Haptics.intensity = Math.round((Haptics.intensity + 0.25) * 100) / 100;
+				log('Pattern strength: ' + Std.int(Haptics.intensity * 100) + '%');
+				needsRebuild = true;
+			}]
+		], x, y + 8 * u, width, '');
+
+		return y;
+	}
+
+	private function addPermissionRows(content:Sprite, entries:Array<{permission:Permission, title:String}>, x:Float, y:Float, width:Float):Float
+	{
+		for (entry in entries)
+		{
+			var row = new PermissionRow(entry.permission, entry.title, width, u, onPermissionTap);
+			row.x = x;
+			row.y = y;
+			content.addChild(row);
+			rows.push(row);
+			y += row.height + 8 * u;
+		}
+
+		return y;
+	}
 
 	/** The mod list and its controls. Returns the y below them. */
 	private function buildMods(content:Sprite, x:Float, y:Float, width:Float):Float

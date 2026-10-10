@@ -14,7 +14,7 @@ It exposes common native mobile features through one cross-platform Haxe API, an
 | Runtime permissions |    ✅    |  ✅  | always granted |
 | Toast messages      |    ✅    | ✅¹  |     no-op      |
 | Vibration           |    ✅    | ✅²  |     no-op      |
-| Haptics             |    ✅    |  ✅  |     no-op      |
+| Haptics + patterns  |    ✅    |  ✅  |     no-op      |
 | Keep screen on      |    ✅    |  ✅  |     no-op      |
 | Device info         |    ✅    |  ✅  |    defaults    |
 | Storage folders     |    ✅    |  ✅  | working folder |
@@ -61,17 +61,89 @@ Two runnable examples live in [`samples/`](samples): `basic` (minimal Lime) and 
 
 ## Haptics
 
-Semantic feedback for UI interactions. Unlike `vibrate()`, you describe *what happened* and each platform picks the best feel.
+Two levels: the platform's own effects for UI feedback, and fully custom patterns.
 
 ```haxe
 import mobiletools.Haptics;
 
+// Semantic effects: they feel native on each platform
 Haptics.selection();             // a picker or switch changed
 Haptics.impact(MEDIUM);          // LIGHT, MEDIUM, HEAVY, SOFT or RIGID: a button press, a collision
 Haptics.notification(SUCCESS);   // SUCCESS, WARNING or ERROR
+
+// Named patterns: built in, registered by you, or provided by a mod
+Haptics.playNamed('heartbeat');  // false if there is no such pattern
+
+// Your own pattern
+Haptics.play(new HapticPattern('victory')
+    .tap(0, 1, 0.9)              // time (ms), intensity, sharpness
+    .tap(120, 0.7, 0.9)
+    .hold(300, 250, 0.6)         // time, duration, intensity
+    .ramp(600, 400, 0.6, 0));    // time, duration, from, to: a fade out
+
+Haptics.stop();                  // cut a pattern short
 ```
 
-On iOS this uses the Taptic Engine feedback generators. On Android it uses the system's predefined effects (Android 10+) and falls back to short pulses on older versions, so the feel varies with the device's vibration motor. Needs the `VIBRATE` permission, which the library declares for you.
+### Patterns
+
+A `HapticPattern` is a list of events, each with a `time`, a `duration` (0 is a short tap), an `intensity` and a `sharpness` (0 soft, 1 crisp). Besides `tap`, `hold` and `ramp` you can `repeat(count, interval)` what you have so far, and make copies with `scaled(factor)` (intensity) and `stretched(factor)` (speed).
+
+| Platform                          | How a pattern plays                                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| iOS with Core Haptics             | Exact timing, intensity and sharpness.                                                                      |
+| iOS without Core Haptics          | Approximated with the impact generators, one tap per event.                                                 |
+| Android 8+ with amplitude control | A waveform with a strength per moment. Sharpness only shortens taps. Overlapping events keep the strongest. |
+| Android without amplitude control | Plain on and off.                                                                                           |
+
+Check what the device supports with `Haptics.capabilities` (`supported`, `amplitudeControl`, `sharpnessControl`).
+
+Patterns are checked as they are built (at most 256 events and 30 seconds, no NaN, intensities clamped to 0-1), because they can come from mods.
+
+### JSON
+
+Patterns load from and save to JSON, which is also how mods ship them:
+
+```json
+{
+    "name": "hello-wave",
+    "events": [
+        {"time": 0,   "duration": 120, "intensity": 0.3, "sharpness": 0.2},
+        {"time": 140, "duration": 120, "intensity": 0.6},
+        {"time": 480, "intensity": 1.0, "sharpness": 1.0}
+    ]
+}
+```
+
+Only `time` is required: `duration` defaults to 0, `intensity` to 1 and `sharpness` to 0.5.
+
+```haxe
+var pattern = HapticPattern.fromJson(json);
+trace(pattern.toJson(true));
+```
+
+### The pattern library
+
+Names resolve through layers, highest priority first: mods, then your own patterns, then the built in ones.
+
+```haxe
+Haptics.register('hit', new HapticPattern().tap(0).tap(80, 0.6));   // your own
+Haptics.playNamed('hit');
+Haptics.unregister('hit');
+Haptics.patternNames();    // everything available right now
+```
+
+Built in patterns: `double-tap`, `triple-tap`, `knock`, `pulse`, `heartbeat`, `buzz`, `alarm`, `rumble`, `explosion`, `ramp-up`, `ramp-down`. Registering (or a mod providing) a pattern with one of these names replaces it, and removing it brings the original back.
+
+### The user's settings
+
+```haxe
+Haptics.enabled = false;     // a master switch for your settings screen: silences everything, mods included
+Haptics.intensity = 0.5;     // scales custom patterns (the platform effects have a fixed strength)
+```
+
+Scripts cannot change either of these.
+
+Needs the `VIBRATE` permission on Android, which the library declares for you.
 
 ## Permissions
 
@@ -112,8 +184,20 @@ Available permissions:
 | `CALENDAR`         | `READ_CALENDAR` + `WRITE_CALENDAR`                                    | Calendar (full access)    |
 | `MOTION`           | `ACTIVITY_RECOGNITION` (Android 10+, else always granted)             | Motion & Fitness          |
 | `BIOMETRICS`       | *Availability only*, see below                                        | *Availability only*       |
+| `LOCATION_ALWAYS`  | `ACCESS_BACKGROUND_LOCATION` (request `LOCATION` first)               | Location, always          |
+| `TRACKING`         | always granted                                                        | App Tracking Transparency (iOS 14+) |
+| `PHONE`            | `READ_PHONE_STATE`                                                    | always granted            |
+| `NEARBY_WIFI`      | `NEARBY_WIFI_DEVICES` (Android 13+, else always granted)              | always granted            |
+| `BODY_SENSORS`     | `BODY_SENSORS`                                                        | always granted (HealthKit is separate) |
+| `OVERLAY`          | Draw over other apps (settings screen)                                | always granted            |
+| `IGNORE_BATTERY_OPTIMIZATIONS` | Run without battery limits (system dialog)                | always granted            |
+| `EXACT_ALARM`      | `SCHEDULE_EXACT_ALARM` (settings screen on Android 12+, else always granted) | always granted     |
+| `WRITE_SETTINGS`   | Change system settings (settings screen)                              | always granted            |
+| `INSTALL_PACKAGES` | Install other apps (settings screen on Android 8+)                    | always granted            |
 
-`EXTERNAL_STORAGE` on Android 11+ does not show a dialog: it opens a system settings screen and the request finishes when the user comes back. Google Play restricts apps that declare `MANAGE_EXTERNAL_STORAGE`, so only use it if you really need to read and write outside your app's folders.
+**Settings screen permissions.** `EXTERNAL_STORAGE` (Android 11+), `OVERLAY`, `IGNORE_BATTERY_OPTIMIZATIONS`, `EXACT_ALARM`, `WRITE_SETTINGS` and `INSTALL_PACKAGES` are not granted in a dialog: the request opens the matching system screen and finishes when the user comes back. Because that screen can always be opened again, a refusal is `DENIED`, never `DENIED_PERMANENTLY`. Google Play restricts apps that declare `MANAGE_EXTERNAL_STORAGE`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `SCHEDULE_EXACT_ALARM` and `REQUEST_INSTALL_PACKAGES`, so only use them when you really need to.
+
+`LOCATION_ALWAYS` needs `LOCATION` first: from Android 11 the system refuses background location until foreground location is granted, then sends the user to a settings screen. On iOS it upgrades "while using" to "always", which the system offers only once.
 
 `BIOMETRICS` is different from the rest: neither platform lets an app *ask* for biometrics, so `request()` never shows anything. `check()` tells you whether they can be used:
 
@@ -161,6 +245,15 @@ The library does **not** declare permissions for you, so your app only ships the
 <config:android permission="android.permission.WRITE_CALENDAR" />
 <config:android permission="android.permission.ACTIVITY_RECOGNITION" />  <!-- MOTION (Android 10+) -->
 <config:android permission="android.permission.USE_BIOMETRIC" />         <!-- BIOMETRICS -->
+<config:android permission="android.permission.ACCESS_BACKGROUND_LOCATION" /> <!-- LOCATION_ALWAYS (Android 10+) -->
+<config:android permission="android.permission.READ_PHONE_STATE" />      <!-- PHONE -->
+<config:android permission="android.permission.NEARBY_WIFI_DEVICES" />   <!-- NEARBY_WIFI (Android 13+) -->
+<config:android permission="android.permission.BODY_SENSORS" />          <!-- BODY_SENSORS -->
+<config:android permission="android.permission.SYSTEM_ALERT_WINDOW" />   <!-- OVERLAY -->
+<config:android permission="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" /> <!-- IGNORE_BATTERY_OPTIMIZATIONS -->
+<config:android permission="android.permission.SCHEDULE_EXACT_ALARM" />  <!-- EXACT_ALARM (Android 12+) -->
+<config:android permission="android.permission.WRITE_SETTINGS" />        <!-- WRITE_SETTINGS -->
+<config:android permission="android.permission.REQUEST_INSTALL_PACKAGES" /> <!-- INSTALL_PACKAGES -->
 ```
 
 Without the manifest entry Android denies the request immediately. Runtime permissions need target SDK 23 or higher.
@@ -177,6 +270,8 @@ Without the manifest entry Android denies the request immediately. Runtime permi
 	<key>NSLocationWhenInUseUsageDescription</key>   <string>Why you need your location</string>
 	<key>NSPhotoLibraryUsageDescription</key>        <string>Why you need your photos and videos</string>
 	<key>NSAppleMusicUsageDescription</key>          <string>Why you need your music</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key> <string>Why you need your location in the background</string>
+	<key>NSUserTrackingUsageDescription</key>        <string>Why you track the user</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>     <string>Why you need Bluetooth</string>
 	<key>NSContactsUsageDescription</key>            <string>Why you need your contacts</string>
 	<key>NSCalendarsUsageDescription</key>           <string>Why you need your calendar</string>
@@ -228,7 +323,7 @@ script.has('onUpdate');           // false, so optional hooks are safe to call
 
 Errors are thrown as a `String` that names the script and function.
 
-**What scripts can use.** Only what they are given: `Std`, `Math`, `StringTools`, `Json` (`parse`, `stringify`, `prettyStringify`) and `mobile`:
+**What scripts can use.** Only what they are given: `Std`, `Math`, `StringTools`, `Json` (`parse`, `stringify`, `prettyStringify`), `mobile` and `haptics`:
 
 ```haxe
 mobile.showToast('Hi');                mobile.showLongToast('Hi');
@@ -237,6 +332,19 @@ mobile.impact('heavy');                // light, medium, heavy, soft, rigid
 mobile.notification('success');        // success, warning, error
 mobile.getDeviceInfo();                mobile.isMobile / mobile.isSupported
 ```
+
+**Haptics from scripts** (`haptics`) can play named patterns and build new ones. Builder methods return the builder, so calls chain, and trailing arguments are optional:
+
+```haxe
+haptics.play('heartbeat');                       // by name, false if unknown
+haptics.pattern().tap(0, 1, 0.9).hold(100, 300, 0.5).ramp(400, 300, 0.5, 0).play();
+haptics.define('my-hit', haptics.pattern().tap(0).tap(80, 0.6));   // save it for later
+haptics.fromJson(text).play();   haptics.fromData({events: [{time: 0}]}).play();
+haptics.has('my-hit');   haptics.names();   haptics.stop();
+haptics.impact('heavy');   haptics.notification('success');   haptics.selection();
+```
+
+`tap(time, [intensity], [sharpness])`, `hold(time, duration, [intensity], [sharpness])`, `ramp(time, duration, from, to, [steps], [sharpness])`, `repeat(count, interval)`, then `play()`, `duration()` or `toJson()`. The limits above apply, and `Haptics.enabled` and `Haptics.intensity` are out of reach.
 
 Give a script more by passing `globals` to `Script.fromString`, or `ModManager.expose()` for mods.
 
@@ -284,6 +392,8 @@ hello-mod/
 ├── mod.json
 ├── scripts/
 │   └── main.hx
+├── haptics/
+│   └── hello-wave.json  haptic patterns, see below
 └── images/bg.png        any files you want to replace or add
 ```
 
@@ -312,6 +422,8 @@ function onTap()    { taps++; mobile.impact('light'); return taps; }
 ```
 
 Besides `mobile` and anything you expose, each script gets a `mod` object: `mod.id`, `mod.name`, `mod.version`, `mod.log(msg)`, `mod.exists(file)`, `mod.readText(file)`, `mod.readJson(file)` and `mod.list(folder)`. These only reach inside the mod's own folder: absolute paths, `..` and symbolic links pointing outside are refused.
+
+**Haptic patterns.** Every `haptics/*.json` of an enabled mod becomes available to `Haptics.playNamed()` and to every script, named by the `name` inside the file or else the file name. A mod with the same name as a built in pattern replaces it, the later mod wins between mods, and disabling a mod gives everything back. Patterns a script saves with `haptics.define()` belong to its mod and disappear with it. A broken pattern file is reported to `onError` and skipped, it doesn't stop the mod.
 
 A mod that fails to load (bad script, missing or circular dependency) stays disabled with `mod.error` set, and never stops the others. A script that throws at runtime is reported to `onError` and skipped.
 
@@ -346,12 +458,12 @@ Keep it small, and validate arguments: scripts come from files the user download
 haxe tests/test.hxml
 ```
 
-Runs the scripting, sandbox and mod system tests (69 checks) on Haxe's interpreter, inside a temporary folder. They also pass compiled to neko and with `hscriptPos` defined. They have not been run compiled to C++, the target used on Android and iOS.
+Runs two test programs (278 checks) on Haxe's interpreter, inside a temporary folder: `ModTest` (scripting, sandbox, mods) and `HapticTest` (patterns, waveform conversion, the pattern library, the `Haptics` class with a recording backend, the script API and mod provided patterns). They also pass compiled to neko and with `hscriptPos` defined. They have not been run compiled to C++, the target used on Android and iOS.
 
 ## Project layout
 
 ```
-src/mobiletools/          Haxe API (MobileTools, Permissions, Haptics, ...)
+src/mobiletools/          Haxe API (MobileTools, Permissions, Haptics, HapticPattern, ...)
 src/mobiletools/backend/  Platform backends (IBackend, AndroidBackend, IOSBackend, NullBackend)
 src/mobiletools/scripting/ hscript sandbox (Script, ScriptInterp, ScriptApi)
 src/mobiletools/mods/     Mod discovery and management (ModManager, Mod, ModInfo)
@@ -366,7 +478,7 @@ tests/                    Scripting and modding tests
 ## Adding a backend
 
 1. Implement `mobiletools.backend.IBackend`.
-2. Select it for your target in `MobileTools.createBackend()`.
+2. Select it for your target in `MobileTools.createBackend()`, or install it at runtime with `MobileTools.setBackend()` (handy in tests).
 3. Add any native sources / permissions to `include.xml`.
 
 ## License
