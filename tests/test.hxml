@@ -1,0 +1,5 @@
+-cp src
+-cp tests
+-lib hscript
+-main ModTest
+--interp

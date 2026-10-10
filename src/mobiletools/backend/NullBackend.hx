@@ -5,6 +5,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
 /**
@@ -30,6 +31,16 @@ class NullBackend implements IBackend
 	public function getDeviceInfo():DeviceInfo
 	{
 		return DeviceInfoTools.unknown();
+	}
+
+	public function getDirectory(directory:StorageDirectory):String
+	{
+		#if sys
+		// No sandbox on desktop: everything lives next to the working directory, which keeps mods easy to try.
+		return haxe.io.Path.removeTrailingSlashes(Sys.getCwd());
+		#else
+		return '';
+		#end
 	}
 
 	public function impact(style:ImpactStyle):Void {}

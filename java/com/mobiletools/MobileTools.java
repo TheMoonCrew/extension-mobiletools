@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.hardware.biometrics.BiometricManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -34,6 +35,7 @@ public class MobileTools extends Extension
 	private static final int STATUS_GRANTED = 1;
 	private static final int STATUS_DENIED = 2;
 	private static final int STATUS_DENIED_PERMANENTLY = 3;
+	private static final int STATUS_RESTRICTED = 4;
 
 	private static final int PERMISSION_REQUEST_CODE = 7391;
 	private static final int ALL_FILES_REQUEST_CODE = 7392;
@@ -119,6 +121,40 @@ public class MobileTools extends Extension
 		}
 
 		return json.toString();
+	}
+
+	// ---------------------------------------------------------------- storage
+
+	/** directory is a mobiletools.StorageDirectory value: 0 internal, 1 app external, 2 shared. May return null. */
+	@SuppressWarnings("deprecation")
+	public static String getDirectory(int directory)
+	{
+		Context context = Extension.mainContext;
+
+		if (context == null)
+			return null;
+
+		java.io.File file;
+
+		switch (directory)
+		{
+			case 0:
+				file = context.getFilesDir();
+				break;
+			case 1:
+				// Null when no external storage is mounted; fall back to the always available internal folder.
+				file = context.getExternalFilesDir(null);
+
+				if (file == null)
+					file = context.getFilesDir();
+
+				break;
+			default:
+				file = Environment.getExternalStorageDirectory();
+				break;
+		}
+
+		return file != null ? file.getAbsolutePath() : null;
 	}
 
 	// ---------------------------------------------------------------- haptics
@@ -213,6 +249,9 @@ public class MobileTools extends Extension
 		if (usesAllFilesAccess(id))
 			return checkAllFilesAccess();
 
+		if ("biometrics".equals(id))
+			return checkBiometrics();
+
 		String[] permissions = androidPermissions(id);
 
 		// No runtime permission on this OS version (or unknown id): nothing to ask.
@@ -289,6 +328,54 @@ public class MobileTools extends Extension
 		Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", activity.getPackageName(), null));
 		intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 		activity.startActivity(intent);
+	}
+
+	/**
+	 * Biometrics have no runtime permission, so report whether they are usable instead.
+	 * requestPermission() does nothing for them because androidPermissions() is empty.
+	 */
+	private static int checkBiometrics()
+	{
+		Activity activity = Extension.mainActivity;
+
+		if (activity == null)
+			return STATUS_NOT_DETERMINED;
+
+		// android.hardware.biometrics arrived in Android 9; Android 9 itself can only tell us about fingerprints.
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P)
+			return STATUS_RESTRICTED;
+
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
+			return activity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_FINGERPRINT) ? STATUS_GRANTED : STATUS_RESTRICTED;
+
+		BiometricManager manager = activity.getSystemService(BiometricManager.class);
+
+		if (manager == null)
+			return STATUS_RESTRICTED;
+
+		int result;
+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+			result = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK);
+		else
+			result = legacyCanAuthenticate(manager);
+
+		switch (result)
+		{
+			case BiometricManager.BIOMETRIC_SUCCESS:
+				return STATUS_GRANTED;
+			case BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED:
+			case BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE:
+				return STATUS_DENIED;
+			default:
+				return STATUS_RESTRICTED;
+		}
+	}
+
+	@SuppressWarnings("deprecation")
+	private static int legacyCanAuthenticate(BiometricManager manager)
+	{
+		return manager.canAuthenticate();
 	}
 
 	/** "All files access" (Android 11+) is a settings switch rather than a runtime permission. */
@@ -425,6 +512,27 @@ public class MobileTools extends Extension
 				return Build.VERSION.SDK_INT >= 33
 					? new String[] { "android.permission.READ_MEDIA_AUDIO" }
 					: new String[] { "android.permission.READ_EXTERNAL_STORAGE" };
+
+			case "video":
+				return Build.VERSION.SDK_INT >= 33
+					? new String[] { "android.permission.READ_MEDIA_VIDEO" }
+					: new String[] { "android.permission.READ_EXTERNAL_STORAGE" };
+
+			case "bluetooth":
+				// Before Android 12 Bluetooth permissions are install-time only.
+				return Build.VERSION.SDK_INT >= 31
+					? new String[] { "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN" }
+					: new String[0];
+
+			case "contacts":
+				return new String[] { "android.permission.READ_CONTACTS" };
+
+			case "calendar":
+				return new String[] { "android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR" };
+
+			case "motion":
+				// Activity recognition became a runtime permission in Android 10.
+				return Build.VERSION.SDK_INT >= 29 ? new String[] { "android.permission.ACTIVITY_RECOGNITION" } : new String[0];
 
 			case "storage":
 				// Has no effect from Android 13, where media access moved to READ_MEDIA_*.

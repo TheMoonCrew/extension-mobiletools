@@ -5,6 +5,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
 /**
@@ -23,6 +24,9 @@ interface IBackend
 	public function cancelVibration():Void;
 	public function setKeepScreenOn(enabled:Bool):Void;
 	public function getDeviceInfo():DeviceInfo;
+
+	/** Absolute path of the folder, without a trailing slash, or an empty string when unavailable. */
+	public function getDirectory(directory:StorageDirectory):String;
 
 	public function impact(style:ImpactStyle):Void;
 	public function notification(type:NotificationType):Void;

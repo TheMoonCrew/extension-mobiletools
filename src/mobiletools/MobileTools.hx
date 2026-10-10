@@ -1,6 +1,7 @@
 package mobiletools;
 
 import mobiletools.DeviceInfo;
+import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 import mobiletools.backend.AndroidBackend;
 import mobiletools.backend.IBackend;
@@ -77,6 +78,17 @@ class MobileTools
 	public static function getDeviceInfo():DeviceInfo
 	{
 		return backend.getDeviceInfo();
+	}
+
+	/**
+	 * Returns the absolute path of a well-known folder, without a trailing slash.
+	 *
+	 * On desktop every folder is the working directory. Returns an empty string when the
+	 * folder is unavailable (e.g. no external storage mounted, or html5).
+	 */
+	public static function getDirectory(directory:StorageDirectory):String
+	{
+		return backend.getDirectory(directory);
 	}
 
 	private static function createBackend():IBackend

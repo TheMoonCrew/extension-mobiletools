@@ -3,7 +3,12 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <Contacts/Contacts.h>
+#import <CoreBluetooth/CoreBluetooth.h>
 #import <CoreLocation/CoreLocation.h>
+#import <CoreMotion/CoreMotion.h>
+#import <EventKit/EventKit.h>
+#import <LocalAuthentication/LocalAuthentication.h>
 #import <MediaPlayer/MediaPlayer.h>
 #import <Photos/Photos.h>
 #import <UserNotifications/UserNotifications.h>
@@ -224,6 +229,108 @@ static int notificationsStatus()
 	return result;
 }
 
+#pragma mark - Bluetooth
+
+static int bluetoothStatus()
+{
+	if (@available(iOS 13.1, *))
+	{
+		// CBManagerAuthorization: 0 notDetermined, 1 restricted, 2 denied, 3 allowedAlways
+		switch ((NSInteger)[CBCentralManager authorization])
+		{
+			case 0: return StatusNotDetermined;
+			case 1: return StatusRestricted;
+			case 2: return StatusDeniedPermanently;
+			default: return StatusGranted;
+		}
+	}
+
+	// Before iOS 13 there was no Bluetooth permission.
+	return StatusGranted;
+}
+
+@interface MTBluetoothDelegate : NSObject <CBCentralManagerDelegate>
+@end
+
+@implementation MTBluetoothDelegate
+
+- (void)centralManagerDidUpdateState:(CBCentralManager*)central
+{
+	// Called once when the manager is created, and again after the user answered the prompt.
+	if (bluetoothStatus() != StatusNotDetermined)
+		setPending(@"bluetooth", NO);
+}
+
+@end
+
+static CBCentralManager* bluetoothManager;
+static MTBluetoothDelegate* bluetoothDelegate;
+
+#pragma mark - Contacts / calendar / motion / biometrics
+
+// CNAuthorizationStatus and EKAuthorizationStatus share their first values:
+// 0 notDetermined, 1 restricted, 2 denied, 3 authorized.
+static int mapEntityStatus(NSInteger status)
+{
+	switch (status)
+	{
+		case 0: return StatusNotDetermined;
+		case 1: return StatusRestricted;
+		case 2: return StatusDeniedPermanently;
+		default: return StatusGranted; // 3 authorized, 4 limited access (contacts, iOS 18)
+	}
+}
+
+static int calendarStatus()
+{
+	NSInteger status = (NSInteger)[EKEventStore authorizationStatusForEntityType:EKEntityTypeEvent];
+
+	// 4 is "write only" (iOS 17): events can be added but not read, which is not what we report as granted.
+	return status == 4 ? StatusDeniedPermanently : mapEntityStatus(status);
+}
+
+static int motionStatus()
+{
+	if (![CMMotionActivityManager isActivityAvailable])
+		return StatusRestricted;
+
+	if (@available(iOS 11.0, *))
+		return mapEntityStatus((NSInteger)[CMMotionActivityManager authorizationStatus]);
+
+	return StatusGranted;
+}
+
+static int biometricsStatus()
+{
+	LAContext* context = [[LAContext alloc] init];
+	NSError* error = nil;
+
+	if ([context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics error:&error])
+		return StatusGranted;
+
+	// LAError codes: -6 biometryNotAvailable, -7 biometryNotEnrolled, -8 biometryLockout
+	switch (error.code)
+	{
+		case -7:
+		case -8:
+			return StatusDenied;
+
+		case -6:
+		{
+			// "Not available" covers both a missing sensor and Face ID refused for this app.
+			BOOL hasSensor = NO;
+
+			if (@available(iOS 11.0, *))
+				hasSensor = context.biometryType != LABiometryTypeNone;
+
+			return hasSensor ? StatusDeniedPermanently : StatusRestricted;
+		}
+
+		default:
+			return StatusRestricted;
+	}
+}
+
 #pragma mark - Public interface
 
 namespace mobiletools
@@ -311,6 +418,24 @@ namespace mobiletools
 
 			json = string.UTF8String;
 			return json.c_str();
+		}
+
+		const char* getDirectory(int directory)
+		{
+			static std::string path;
+
+			// mobiletools.StorageDirectory: 0 internal, 1 app external, 2 shared. iOS only has the app's sandbox.
+			NSSearchPathDirectory searchPath = directory == 0 ? NSApplicationSupportDirectory : NSDocumentDirectory;
+			NSString* folder = NSSearchPathForDirectoriesInDomains(searchPath, NSUserDomainMask, YES).firstObject;
+
+			if (folder != nil && directory == 0)
+			{
+				// Application Support is not created automatically.
+				[[NSFileManager defaultManager] createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
+			}
+
+			path = folder != nil ? folder.UTF8String : "";
+			return path.c_str();
 		}
 
 		void impact(int style)
@@ -404,8 +529,24 @@ namespace mobiletools
 			if ([key isEqualToString:@"location"])
 				return locationStatus();
 
-			if ([key isEqualToString:@"images"])
+			// Videos live in the same photo library as images, so they share one system permission.
+			if ([key isEqualToString:@"images"] || [key isEqualToString:@"video"])
 				return imagesStatus();
+
+			if ([key isEqualToString:@"bluetooth"])
+				return bluetoothStatus();
+
+			if ([key isEqualToString:@"contacts"])
+				return mapEntityStatus((NSInteger)[CNContactStore authorizationStatusForEntityType:CNEntityTypeContacts]);
+
+			if ([key isEqualToString:@"calendar"])
+				return calendarStatus();
+
+			if ([key isEqualToString:@"motion"])
+				return motionStatus();
+
+			if ([key isEqualToString:@"biometrics"])
+				return biometricsStatus();
 
 			if ([key isEqualToString:@"audio"])
 				return audioStatus();
@@ -448,7 +589,48 @@ namespace mobiletools
 					[locationManager requestWhenInUseAuthorization];
 				});
 			}
-			else if ([key isEqualToString:@"images"])
+			else if ([key isEqualToString:@"bluetooth"])
+			{
+				setPending(key, YES);
+
+				// Creating the manager is what makes iOS show the Bluetooth prompt.
+				runOnMain(^{
+					if (bluetoothManager == nil)
+					{
+						bluetoothDelegate = [[MTBluetoothDelegate alloc] init];
+						bluetoothManager = [[CBCentralManager alloc] initWithDelegate:bluetoothDelegate queue:nil options:@{ CBCentralManagerOptionShowPowerAlertKey: @NO }];
+					}
+				});
+			}
+			else if ([key isEqualToString:@"contacts"])
+			{
+				setPending(key, YES);
+				[[[CNContactStore alloc] init] requestAccessForEntityType:CNEntityTypeContacts completionHandler:^(BOOL granted, NSError* error) { setPending(key, NO); }];
+			}
+			else if ([key isEqualToString:@"calendar"])
+			{
+				setPending(key, YES);
+
+				EKEventStore* store = [[EKEventStore alloc] init];
+
+				// The store must stay alive until the prompt is answered, which the block capturing it ensures.
+				if (@available(iOS 17.0, *))
+					[store requestFullAccessToEventsWithCompletion:^(BOOL granted, NSError* error) { (void)store; setPending(key, NO); }];
+				else
+					[store requestAccessToEntityType:EKEntityTypeEvent completion:^(BOOL granted, NSError* error) { (void)store; setPending(key, NO); }];
+			}
+			else if ([key isEqualToString:@"motion"])
+			{
+				setPending(key, YES);
+
+				// There is no request call: asking for activity data is what triggers the prompt.
+				CMMotionActivityManager* manager = [[CMMotionActivityManager alloc] init];
+				[manager queryActivityStartingFromDate:[NSDate dateWithTimeIntervalSinceNow:-60]
+												toDate:[NSDate date]
+											   toQueue:[[NSOperationQueue alloc] init]
+										   withHandler:^(NSArray<CMMotionActivity*>* activities, NSError* error) { (void)manager; setPending(key, NO); }];
+			}
+			else if ([key isEqualToString:@"images"] || [key isEqualToString:@"video"])
 			{
 				setPending(key, YES);
 

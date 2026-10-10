@@ -4,6 +4,8 @@ import mobiletools.MobileTools;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
 import mobiletools.Permissions;
+import mobiletools.mods.Mod;
+import mobiletools.mods.ModManager;
 import openfl.display.Sprite;
 import openfl.display.StageAlign;
 import openfl.display.StageScaleMode;
@@ -23,6 +25,8 @@ class Main extends Sprite
 	private var statusText:TextField;
 	private var rows:Array<PermissionRow> = [];
 	private var keepScreenOn:Bool = false;
+	private var needsRebuild:Bool = false;
+	private var lastMessage:String = 'Tap a button to try a feature';
 
 	public function new()
 	{
@@ -42,11 +46,28 @@ class Main extends Sprite
 		// Coming back from the system settings (or a permission dialog) may have changed a status.
 		stage.addEventListener(Event.ACTIVATE, function(_) refreshAll());
 
+		// Mods change from inside button taps, so rebuild a frame later instead of mid-click.
+		ModManager.onChanged = function() needsRebuild = true;
+		ModManager.onLog = function(source, message) log('[$source] $message');
+		ModManager.onError = function(source, message) log('Error in $source: $message');
+		ModManager.init();
+
+		addEventListener(Event.ENTER_FRAME, function(_)
+		{
+			if (needsRebuild)
+				build();
+		});
+
 		build();
 	}
 
 	private function build():Void
 	{
+		needsRebuild = false;
+
+		// Rebuilding must not throw the user back to the top of the list.
+		var scrolled = panel != null ? panel.scrollPosition : 0;
+
 		removeChildren();
 		rows = [];
 
@@ -88,9 +109,15 @@ class Main extends Sprite
 			{permission: LOCATION, title: 'Location (while in use)'},
 			{permission: NOTIFICATIONS, title: 'Notifications'},
 			{permission: IMAGES, title: 'Images'},
+			{permission: VIDEO, title: 'Videos'},
 			{permission: AUDIO, title: 'Audio files'},
 			{permission: STORAGE, title: 'Storage'},
-			{permission: EXTERNAL_STORAGE, title: 'All files access'}
+			{permission: EXTERNAL_STORAGE, title: 'All files access'},
+			{permission: BLUETOOTH, title: 'Bluetooth'},
+			{permission: CONTACTS, title: 'Contacts'},
+			{permission: CALENDAR, title: 'Calendar'},
+			{permission: MOTION, title: 'Motion and activity'},
+			{permission: BIOMETRICS, title: 'Biometrics (availability)'}
 		];
 
 		for (entry in permissions)
@@ -145,7 +172,11 @@ class Main extends Sprite
 
 		y = addButton(content, keepButton, pad, y + 8 * u);
 
+		// ---- Mods and scripting
+		y = buildMods(content, pad, y + 20 * u, contentWidth);
+
 		panel.setContentHeight(y + pad);
+		panel.scrollPosition = scrolled;
 
 		// ---- Status bar showing the result of the last action (toasts don't exist on desktop)
 		var bar = new Sprite();
@@ -155,12 +186,83 @@ class Main extends Sprite
 		bar.y = height - barHeight;
 		addChild(bar);
 
-		statusText = Theme.text('Tap a button to try a feature', 13 * u, Theme.MUTED, false, contentWidth);
+		statusText = Theme.text(lastMessage, 13 * u, Theme.MUTED, false, contentWidth);
 		statusText.x = pad;
 		statusText.y = (barHeight - statusText.height) / 2;
 		bar.addChild(statusText);
 
 		refreshAll();
+	}
+
+	// ---------------------------------------------------------------- mods
+
+	/** The mod list and its controls. Returns the y below them. */
+	private function buildMods(content:Sprite, x:Float, y:Float, width:Float):Float
+	{
+		y = section(content, 'Mods and scripting', x, y);
+
+		#if sys
+		var roots = ModManager.getRoots();
+		y = place(content, Theme.text(roots.length > 0 ? 'Looking in: ' + roots.join('\n') : 'No folder to look for mods in', 11 * u, Theme.MUTED, false, width), x, y) + 10 * u;
+
+		var mods = ModManager.mods;
+
+		if (mods.length == 0)
+		{
+			y = place(content, Theme.text('No mods found yet. Install the example mod to try one.', 13 * u, Theme.TEXT, false, width), x, y) + 10 * u;
+		}
+
+		for (mod in mods)
+		{
+			var row = new ModRow(mod, width, u, onModTap);
+			row.x = x;
+			row.y = y;
+			content.addChild(row);
+			y += row.height + 8 * u;
+		}
+
+		return grid(content, [
+			['Install example mod', function()
+			{
+				var folder = ModManager.getRoots()[0];
+				var ok = folder != null && ExampleMod.install(folder);
+				log(ok ? 'Installed "${ExampleMod.ID}" in $folder' : 'Could not write to the mods folder');
+
+				if (ok)
+					ModManager.reload();
+			}],
+			['Use shared storage', function()
+			{
+				log('Asking for access to shared storage...');
+				ModManager.useSharedStorage('MobileToolsShowcase', function(ok) log(ok ? 'Also looking in shared storage' : 'Shared storage not available'));
+			}],
+			['Reload mods', function()
+			{
+				ModManager.reload();
+				log('Mods reloaded');
+			}],
+			['Fire onTap event', function()
+			{
+				var results = ModManager.call('onTap');
+				log(results.length == 0 ? 'No enabled mod handles onTap' : 'onTap returned: ' + results.join(', '));
+			}]
+		], x, y + 4 * u, width, '', 2);
+		#else
+		return place(content, Theme.text('Mods need a file system, which this target does not have.', 13 * u, Theme.WARN, false, width), x, y) + 10 * u;
+		#end
+	}
+
+	private function onModTap(row:ModRow):Void
+	{
+		if (row.mod.enabled)
+		{
+			ModManager.disable(row.mod.id);
+			log('Disabled ${row.mod.name}');
+		}
+		else if (ModManager.enable(row.mod.id))
+		{
+			log('Enabled ${row.mod.name}');
+		}
 	}
 
 	// ---------------------------------------------------------------- permissions
@@ -208,6 +310,8 @@ class Main extends Sprite
 
 	private function log(message:String):Void
 	{
+		lastMessage = message;
+
 		if (statusText != null)
 			statusText.text = message;
 	}
@@ -260,7 +364,10 @@ class Main extends Sprite
 			var button = new Button(label, buttonWidth, buttonHeight, 13 * u, function()
 			{
 				action();
-				log(logPrefix != null ? '$logPrefix: $label' : label);
+
+				// An empty prefix means the action reports its own result.
+				if (logPrefix != '')
+					log(logPrefix != null ? '$logPrefix: $label' : label);
 			});
 
 			button.x = x + (i % columns) * (buttonWidth + gap);
@@ -340,5 +447,45 @@ private class PermissionRow extends Sprite
 
 		// Nothing left to ask once granted, so don't highlight it as an action.
 		button.setPrimary(status != GRANTED);
+	}
+}
+
+/**
+ * One card per mod: its name, state and a button to enable or disable it.
+ */
+private class ModRow extends Sprite
+{
+	public var mod(default, null):Mod;
+
+	public function new(mod:Mod, width:Float, unit:Float, onTap:ModRow->Void)
+	{
+		super();
+
+		this.mod = mod;
+
+		var height = 64 * unit;
+
+		graphics.beginFill(Theme.CARD);
+		graphics.drawRoundRect(0, 0, width, height, 14 * unit, 14 * unit);
+		graphics.endFill();
+
+		var version = mod.info.version != null ? ' v' + mod.info.version : '';
+		var name = Theme.text(Theme.clip(mod.name + version, 24), 15 * unit, Theme.TEXT, true);
+		name.x = 14 * unit;
+		name.y = 10 * unit;
+		addChild(name);
+
+		var state = mod.error != null ? 'Error: ' + mod.error : (mod.enabled ? 'enabled' : 'disabled');
+		var color = mod.error != null ? Theme.BAD : (mod.enabled ? Theme.OK : Theme.MUTED);
+		var status = Theme.text(Theme.clip(state, 34), 12 * unit, color, true);
+		status.x = 14 * unit;
+		status.y = 34 * unit;
+		addChild(status);
+
+		var buttonWidth = 96 * unit;
+		var button = new Button(mod.enabled ? 'Disable' : 'Enable', buttonWidth, 38 * unit, 13 * unit, function() onTap(this), !mod.enabled);
+		button.x = width - buttonWidth - 12 * unit;
+		button.y = (height - 38 * unit) / 2;
+		addChild(button);
 	}
 }

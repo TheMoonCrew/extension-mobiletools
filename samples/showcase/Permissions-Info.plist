@@ -12,5 +12,22 @@
 	<string>The showcase asks for photo library access to demonstrate the permission prompt.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>The showcase asks for media library access to demonstrate the permission prompt.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>The showcase asks for Bluetooth access to demonstrate the permission prompt.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>The showcase asks for contacts access to demonstrate the permission prompt.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>The showcase asks for calendar access to demonstrate the permission prompt.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>The showcase asks for calendar access to demonstrate the permission prompt.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>The showcase asks for motion data access to demonstrate the permission prompt.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>The showcase checks Face ID availability to demonstrate the biometrics status.</string>
+	<!-- Makes the app's Documents folder (where mods go) visible in the Files app. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

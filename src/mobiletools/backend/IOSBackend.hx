@@ -5,6 +5,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
 #if (cpp && ios)
@@ -55,6 +56,11 @@ class IOSBackend implements IBackend
 		{
 			return DeviceInfoTools.unknown();
 		}
+	}
+
+	public function getDirectory(directory:StorageDirectory):String
+	{
+		return IOSNative.getDirectory((directory : Int)).toString();
 	}
 
 	public function impact(style:ImpactStyle):Void

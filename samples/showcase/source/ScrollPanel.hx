@@ -19,6 +19,9 @@ class ScrollPanel extends Sprite
 
 	public var content(default, null):Sprite = new Sprite();
 
+	/** How far the content is scrolled down, in pixels. 0 is the top. */
+	public var scrollPosition(get, set):Float;
+
 	private var viewHeight:Float;
 	private var contentHeight:Float = 0;
 
@@ -127,6 +130,17 @@ class ScrollPanel extends Sprite
 	private function onWheel(e:MouseEvent):Void
 	{
 		content.y = clamp(content.y + e.delta * 20);
+	}
+
+	private function get_scrollPosition():Float
+	{
+		return -content.y;
+	}
+
+	private function set_scrollPosition(value:Float):Float
+	{
+		content.y = clamp(-value);
+		return value;
 	}
 
 	private function clamp(y:Float):Float

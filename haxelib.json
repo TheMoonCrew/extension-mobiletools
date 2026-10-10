@@ -2,13 +2,14 @@
 	"name": "extension-mobiletools",
 	"url": "https://github.com/TheMoonCrew/extension-mobiletools",
 	"license": "MIT",
-	"tags": ["lime", "openfl", "mobile", "android", "ios", "extension", "tools"],
-	"description": "A small mobile-focused toolkit for Lime and OpenFL: runtime permissions, haptics, toast messages, vibration, device info and screen control behind a single cross-platform API (Android and iOS).",
+	"tags": ["lime", "openfl", "mobile", "android", "ios", "extension", "tools", "permissions", "haptics", "modding", "scripting", "hscript"],
+	"description": "A small mobile-focused toolkit for Lime and OpenFL: runtime permissions, haptics, toasts, vibration, device info, plus an hscript-based scripting and modding system, behind a single cross-platform API (Android and iOS).",
 	"version": "0.1.0",
 	"classPath": "src",
-	"releasenote": "Initial release: runtime permissions, haptics, toasts, vibration and device info for Android and iOS.",
+	"releasenote": "Initial release: permissions, haptics, toasts, vibration, device info, scripting and modding for Android and iOS.",
 	"contributors": ["TheMoonCrew"],
 	"dependencies": {
-		"lime": ""
+		"lime": "",
+		"hscript": ""
 	}
 }

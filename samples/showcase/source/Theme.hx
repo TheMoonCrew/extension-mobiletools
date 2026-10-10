@@ -19,6 +19,12 @@ class Theme
 	public static inline var WARN:Int = 0xF5B642;
 	public static inline var BAD:Int = 0xFF5C5C;
 
+	/** Shortens `value` to at most `max` characters, ending in an ellipsis. */
+	public static function clip(value:String, max:Int):String
+	{
+		return value.length <= max ? value : value.substr(0, max - 1) + "...";
+	}
+
 	/**
 	 * Creates a non-interactive label.
 	 *

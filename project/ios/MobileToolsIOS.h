@@ -15,6 +15,9 @@ namespace mobiletools
 		// JSON matching the mobiletools.DeviceInfo typedef. The pointer stays valid until the next call.
 		const char* getDeviceInfo();
 
+		// directory: mobiletools.StorageDirectory. The pointer stays valid until the next call.
+		const char* getDirectory(int directory);
+
 		// style: mobiletools.ImpactStyle, type: mobiletools.NotificationType
 		void impact(int style);
 		void notification(int type);

@@ -10,6 +10,7 @@
 	<source path="source" />
 
 	<haxelib name="openfl" />
+	<haxelib name="hscript" />
 	<!-- Use the local checkout instead of an installed copy: `haxelib dev extension-mobiletools ../..` -->
 	<haxelib name="extension-mobiletools" />
 
@@ -22,6 +23,14 @@
 		<config:android permission="android.permission.POST_NOTIFICATIONS" />
 		<config:android permission="android.permission.READ_MEDIA_IMAGES" />
 		<config:android permission="android.permission.READ_MEDIA_AUDIO" />
+		<config:android permission="android.permission.READ_MEDIA_VIDEO" />
+		<config:android permission="android.permission.BLUETOOTH_CONNECT" />
+		<config:android permission="android.permission.BLUETOOTH_SCAN" />
+		<config:android permission="android.permission.READ_CONTACTS" />
+		<config:android permission="android.permission.READ_CALENDAR" />
+		<config:android permission="android.permission.WRITE_CALENDAR" />
+		<config:android permission="android.permission.ACTIVITY_RECOGNITION" />
+		<config:android permission="android.permission.USE_BIOMETRIC" />
 		<config:android permission="android.permission.READ_EXTERNAL_STORAGE" />
 		<config:android permission="android.permission.WRITE_EXTERNAL_STORAGE" />
 		<config:android permission="android.permission.MANAGE_EXTERNAL_STORAGE" />

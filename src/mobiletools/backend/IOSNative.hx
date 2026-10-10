@@ -25,6 +25,9 @@ extern class IOSNative
 	@:native('mobiletools::ios::getDeviceInfo')
 	static function getDeviceInfo():ConstCharStar;
 
+	@:native('mobiletools::ios::getDirectory')
+	static function getDirectory(directory:Int):ConstCharStar;
+
 	@:native('mobiletools::ios::impact')
 	static function impact(style:Int):Void;
 

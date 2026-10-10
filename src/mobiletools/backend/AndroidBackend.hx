@@ -5,6 +5,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
 #if (lime && android)
@@ -25,6 +26,7 @@ class AndroidBackend implements IBackend
 	private static var cancelVibrationJNI:Dynamic;
 	private static var setKeepScreenOnJNI:Dynamic;
 	private static var getDeviceInfoJNI:Dynamic;
+	private static var getDirectoryJNI:Dynamic;
 	private static var impactJNI:Dynamic;
 	private static var notificationJNI:Dynamic;
 	private static var selectionJNI:Dynamic;
@@ -82,6 +84,15 @@ class AndroidBackend implements IBackend
 		{
 			return DeviceInfoTools.unknown();
 		}
+	}
+
+	public function getDirectory(directory:StorageDirectory):String
+	{
+		if (getDirectoryJNI == null)
+			getDirectoryJNI = JNI.createStaticMethod(JAVA_CLASS, 'getDirectory', '(I)Ljava/lang/String;');
+
+		var path:String = getDirectoryJNI((directory : Int));
+		return path != null ? path : '';
 	}
 
 	public function impact(style:ImpactStyle):Void
