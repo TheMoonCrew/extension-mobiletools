@@ -7,6 +7,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.SafeArea;
 import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
@@ -28,6 +29,8 @@ class AndroidBackend implements IBackend
 	private static var cancelVibrationJNI:Dynamic;
 	private static var setKeepScreenOnJNI:Dynamic;
 	private static var getDeviceInfoJNI:Dynamic;
+	private static var setFullscreenJNI:Dynamic;
+	private static var getSafeAreaJNI:Dynamic;
 	private static var getDirectoryJNI:Dynamic;
 	private static var impactJNI:Dynamic;
 	private static var notificationJNI:Dynamic;
@@ -39,6 +42,9 @@ class AndroidBackend implements IBackend
 	private static var requestPermissionJNI:Dynamic;
 	private static var isPermissionRequestPendingJNI:Dynamic;
 	private static var openSettingsJNI:Dynamic;
+	private static var pickFileJNI:Dynamic;
+	private static var isFilePickerPendingJNI:Dynamic;
+	private static var getPickedFileJNI:Dynamic;
 
 	public var isNative(get, never):Bool;
 
@@ -89,6 +95,22 @@ class AndroidBackend implements IBackend
 		{
 			return DeviceInfoTools.unknown();
 		}
+	}
+
+	public function setFullscreen(enabled:Bool):Void
+	{
+		if (setFullscreenJNI == null)
+			setFullscreenJNI = JNI.createStaticMethod(JAVA_CLASS, 'setFullscreen', '(Z)V');
+
+		setFullscreenJNI(enabled);
+	}
+
+	public function getSafeArea():SafeArea
+	{
+		if (getSafeAreaJNI == null)
+			getSafeAreaJNI = JNI.createStaticMethod(JAVA_CLASS, 'getSafeArea', '()Ljava/lang/String;');
+
+		return SafeAreaTools.parse(getSafeAreaJNI());
 	}
 
 	public function getDirectory(directory:StorageDirectory):String
@@ -183,6 +205,31 @@ class AndroidBackend implements IBackend
 			openSettingsJNI = JNI.createStaticMethod(JAVA_CLASS, 'openSettings', '()V');
 
 		openSettingsJNI();
+	}
+
+	public function pickFile(extensions:String):Bool
+	{
+		if (pickFileJNI == null)
+			pickFileJNI = JNI.createStaticMethod(JAVA_CLASS, 'pickFile', '(Ljava/lang/String;)Z');
+
+		return pickFileJNI(extensions);
+	}
+
+	public function isFilePickerPending():Bool
+	{
+		if (isFilePickerPendingJNI == null)
+			isFilePickerPendingJNI = JNI.createStaticMethod(JAVA_CLASS, 'isFilePickerPending', '()Z');
+
+		return isFilePickerPendingJNI();
+	}
+
+	public function getPickedFile():String
+	{
+		if (getPickedFileJNI == null)
+			getPickedFileJNI = JNI.createStaticMethod(JAVA_CLASS, 'getPickedFile', '()Ljava/lang/String;');
+
+		var path:String = getPickedFileJNI();
+		return path != null ? path : '';
 	}
 
 	@:noCompletion private inline function get_isNative():Bool

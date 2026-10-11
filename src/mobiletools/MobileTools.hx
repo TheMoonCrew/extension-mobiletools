@@ -1,6 +1,7 @@
 package mobiletools;
 
 import mobiletools.DeviceInfo;
+import mobiletools.SafeArea;
 import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 import mobiletools.backend.AndroidBackend;
@@ -24,7 +25,7 @@ import mobiletools.backend.NullBackend;
 class MobileTools
 {
 	/** Backend selected at compile time for the current target. */
-	@:allow(mobiletools.Permissions, mobiletools.Haptics)
+	@:allow(mobiletools.Permissions, mobiletools.Haptics, mobiletools.FilePicker)
 	private static var backend:IBackend = createBackend();
 
 	/** `true` when running on a mobile target (Android or iOS). */
@@ -32,6 +33,9 @@ class MobileTools
 
 	/** `true` when a native backend is active, i.e. calls actually reach the OS. */
 	public static var isSupported(get, never):Bool;
+
+	/** `true` after `setFullscreen(true)`, until `setFullscreen(false)`. */
+	public static var isFullscreen(default, null):Bool = false;
 
 	/**
 	 * Shows a short message on screen without blocking the app.
@@ -72,6 +76,33 @@ class MobileTools
 	public static function setKeepScreenOn(enabled:Bool):Void
 	{
 		backend.setKeepScreenOn(enabled);
+	}
+
+	/**
+	 * Hides (or shows again) the system bars so the app uses the whole screen.
+	 *
+	 * - Android: immersive mode. The status and navigation bars are hidden, a swipe from the edge shows them
+	 *   for a moment, and the app draws behind the notch (Android 9+). It is applied again when the app comes back
+	 *   to the foreground or a dialog (such as a permission prompt) closes.
+	 * - iOS: hides the status bar and lets the home indicator fade out. Edge swipes need a second swipe, so they
+	 *   don't fire by accident during play. Needs `UIViewControllerBasedStatusBarAppearance` left at its default.
+	 *
+	 * Use `getSafeArea()` to keep UI away from notches and camera holes while in fullscreen.
+	 */
+	public static function setFullscreen(enabled:Bool):Void
+	{
+		isFullscreen = enabled;
+		backend.setFullscreen(enabled);
+	}
+
+	/**
+	 * The part of each screen edge, in pixels, covered by system UI or cut out by the hardware (notch, camera
+	 * hole, rounded corners on iOS). It changes with rotation and fullscreen, so read it again after a resize.
+	 * All zero on targets without a native backend.
+	 */
+	public static function getSafeArea():SafeArea
+	{
+		return backend.getSafeArea();
 	}
 
 	/** Returns basic device information, or placeholder values when unsupported. */

@@ -7,6 +7,7 @@ import mobiletools.Haptics;
 import mobiletools.ImpactStyle;
 import mobiletools.MobileTools;
 import mobiletools.NotificationType;
+import mobiletools.mods.ModInfo.ModInfoTools;
 
 /**
  * The variables every script starts with. This is the whole surface a script can touch,
@@ -47,6 +48,7 @@ class ScriptApi
 	 * Styles are plain strings because scripts cannot use Haxe enum abstracts.
 	 *
 	 * Every function takes all of its arguments, since optional parameters are not portable through reflection.
+	 * Scripts can read whether the app is fullscreen and where the safe area is, but only the app can change it.
 	 */
 	private static function createMobileApi():Dynamic
 	{
@@ -59,7 +61,10 @@ class ScriptApi
 			selection: function():Void Haptics.selection(),
 			impact: function(style:String):Void Haptics.impact(parseImpact(style)),
 			notification: function(type:String):Void Haptics.notification(parseNotification(type)),
-			getDeviceInfo: function():Dynamic return MobileTools.getDeviceInfo()
+			getDeviceInfo: function():Dynamic return MobileTools.getDeviceInfo(),
+			platform: ModInfoTools.currentPlatform(),
+			isFullscreen: function():Bool return MobileTools.isFullscreen,
+			getSafeArea: function():Dynamic return MobileTools.getSafeArea()
 		};
 	}
 

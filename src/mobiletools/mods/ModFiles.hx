@@ -89,6 +89,106 @@ class ModFiles
 		return false;
 	}
 
+	public static function writeBytes(path:String, content:Bytes):Bool
+	{
+		#if sys
+		try
+		{
+			File.saveBytes(path, content);
+			return true;
+		}
+		catch (e:Dynamic) {}
+		#end
+
+		return false;
+	}
+
+	public static function rename(from:String, to:String):Bool
+	{
+		#if sys
+		try
+		{
+			FileSystem.rename(from, to);
+			return true;
+		}
+		catch (e:Dynamic) {}
+		#end
+
+		return false;
+	}
+
+	/**
+	 * Deletes `path` and everything inside it. Returns `true` when nothing is left.
+	 *
+	 * Symbolic links are removed, never followed: a mod folder linking to the user's photos must not take them along.
+	 */
+	public static function deleteRecursive(path:String):Bool
+	{
+		#if sys
+		// A dangling link doesn't "exist", but still has to go.
+		if (!FileSystem.exists(path))
+		{
+			deleteFile(path);
+			return true;
+		}
+
+		if (FileSystem.isDirectory(path) && !isLink(path))
+		{
+			for (entry in readDirectory(path))
+				deleteRecursive(Path.join([path, entry]));
+
+			try
+			{
+				FileSystem.deleteDirectory(path);
+			}
+			catch (e:Dynamic) {}
+		}
+		else
+		{
+			deleteFile(path);
+		}
+
+		return !FileSystem.exists(path);
+		#else
+		return false;
+		#end
+	}
+
+	#if sys
+	private static function deleteFile(path:String):Bool
+	{
+		try
+		{
+			FileSystem.deleteFile(path);
+			return true;
+		}
+		catch (e:Dynamic)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Haxe has no lstat, so a link is recognised by its real path not being where it is. A link to a folder
+	 * next to it would look like a plain folder, which is fine: deleting through it stays inside the parent.
+	 */
+	private static function isLink(path:String):Bool
+	{
+		try
+		{
+			var parent = Path.directory(path);
+			var real = normalize(FileSystem.fullPath(path));
+			var expected = normalize(Path.join([FileSystem.fullPath(parent != '' ? parent : '.'), Path.withoutDirectory(path)]));
+			return real != expected;
+		}
+		catch (e:Dynamic)
+		{
+			// fullPath fails on a dangling link: there is nothing behind it to protect.
+			return true;
+		}
+	}
+	#end
+
 	/** Creates `path` and any missing parent folders. */
 	public static function ensureDirectory(path:String):Bool
 	{

@@ -22,6 +22,12 @@ extern class IOSNative
 	@:native('mobiletools::ios::setKeepScreenOn')
 	static function setKeepScreenOn(enabled:Bool):Void;
 
+	@:native('mobiletools::ios::setFullscreen')
+	static function setFullscreen(enabled:Bool):Void;
+
+	@:native('mobiletools::ios::getSafeArea')
+	static function getSafeArea():ConstCharStar;
+
 	@:native('mobiletools::ios::getDeviceInfo')
 	static function getDeviceInfo():ConstCharStar;
 
@@ -57,5 +63,14 @@ extern class IOSNative
 
 	@:native('mobiletools::ios::openSettings')
 	static function openSettings():Void;
+
+	@:native('mobiletools::ios::pickFile')
+	static function pickFile(extensions:ConstCharStar):Bool;
+
+	@:native('mobiletools::ios::isFilePickerPending')
+	static function isFilePickerPending():Bool;
+
+	@:native('mobiletools::ios::getPickedFile')
+	static function getPickedFile():ConstCharStar;
 }
 #end

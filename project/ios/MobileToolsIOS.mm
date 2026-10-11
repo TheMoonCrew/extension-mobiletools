@@ -12,9 +12,13 @@
 #import <EventKit/EventKit.h>
 #import <LocalAuthentication/LocalAuthentication.h>
 #import <MediaPlayer/MediaPlayer.h>
+#import <MobileCoreServices/MobileCoreServices.h>
 #import <Photos/Photos.h>
 #import <UserNotifications/UserNotifications.h>
 
+#include <objc/runtime.h>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -71,6 +75,217 @@ static UIWindow* findKeyWindow()
 	// Apps without scenes (the usual Lime/SDL setup) only have the legacy key window.
 	return application.keyWindow ?: application.windows.firstObject;
 #pragma clang diagnostic pop
+}
+
+#pragma mark - Fullscreen
+
+// Whether the status bar is hidden is asked of the root view controller, which belongs to SDL. Rather than
+// subclassing it, its answers to the three questions below are replaced (once per class) by ones that defer to
+// the original unless fullscreen is on.
+static BOOL fullscreenEnabled = NO;
+
+static void overrideBool(Class cls, SEL selector, BOOL fullscreenValue)
+{
+	Method method = class_getInstanceMethod(cls, selector);
+
+	if (method == NULL)
+		return;
+
+	typedef BOOL (*Getter)(id, SEL);
+	Getter original = (Getter)method_getImplementation(method);
+
+	IMP replacement = imp_implementationWithBlock(^BOOL(id self) {
+		return fullscreenEnabled ? fullscreenValue : original(self, selector);
+	});
+
+	// Adds the method to cls itself when it was only inherited, so the superclass keeps its own behaviour.
+	class_replaceMethod(cls, selector, replacement, method_getTypeEncoding(method));
+}
+
+static void overrideEdges(Class cls, SEL selector)
+{
+	Method method = class_getInstanceMethod(cls, selector);
+
+	if (method == NULL)
+		return;
+
+	typedef UIRectEdge (*Getter)(id, SEL);
+	Getter original = (Getter)method_getImplementation(method);
+
+	IMP replacement = imp_implementationWithBlock(^UIRectEdge(id self) {
+		return fullscreenEnabled ? UIRectEdgeAll : original(self, selector);
+	});
+
+	class_replaceMethod(cls, selector, replacement, method_getTypeEncoding(method));
+}
+
+static void prepareFullscreen(UIViewController* controller)
+{
+	static NSMutableSet<Class>* prepared;
+
+	if (prepared == nil)
+		prepared = [NSMutableSet set];
+
+	Class cls = [controller class];
+
+	if ([prepared containsObject:cls])
+		return;
+
+	[prepared addObject:cls];
+
+	overrideBool(cls, @selector(prefersStatusBarHidden), YES);
+	overrideBool(cls, @selector(prefersHomeIndicatorAutoHidden), YES);
+	overrideEdges(cls, @selector(preferredScreenEdgesDeferringSystemGestures));
+}
+
+// The controller whose preferences iOS actually uses: the topmost one presented on the root.
+static UIViewController* topViewController()
+{
+	UIViewController* controller = findKeyWindow().rootViewController;
+
+	while (controller.presentedViewController != nil)
+		controller = controller.presentedViewController;
+
+	return controller;
+}
+
+static void applyFullscreen()
+{
+	UIViewController* root = findKeyWindow().rootViewController;
+
+	if (root == nil)
+		return;
+
+	prepareFullscreen(root);
+
+	UIViewController* top = topViewController();
+
+	if (top != root)
+		prepareFullscreen(top);
+
+	NSNumber* controllerBased = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"UIViewControllerBasedStatusBarAppearance"];
+
+	if (controllerBased != nil && !controllerBased.boolValue)
+	{
+		// The app opted out of per-controller status bars, which leaves only the old application wide switch.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		[[UIApplication sharedApplication] setStatusBarHidden:fullscreenEnabled withAnimation:UIStatusBarAnimationFade];
+#pragma clang diagnostic pop
+	}
+
+	[top setNeedsStatusBarAppearanceUpdate];
+
+	if (@available(iOS 11.0, *))
+	{
+		[top setNeedsUpdateOfHomeIndicatorAutoHidden];
+		[top setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+	}
+}
+
+#pragma mark - File picker
+
+// Written by the picker delegate on the main thread, read from Haxe: guarded by @synchronized on the lock.
+static NSObject* pickLock()
+{
+	static NSObject* lock;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ lock = [[NSObject alloc] init]; });
+	return lock;
+}
+
+static BOOL pickPending = NO;
+static NSString* pickedPath = @"";
+
+static void finishPick(NSString* path)
+{
+	@synchronized(pickLock())
+	{
+		pickedPath = path ?: @"";
+		pickPending = NO;
+	}
+}
+
+// Copies the chosen file into tmp/mobiletools_picked, replacing the previous pick.
+static NSString* copyPickedFile(NSURL* url)
+{
+	if (url == nil)
+		return @"";
+
+	NSFileManager* files = [NSFileManager defaultManager];
+	NSString* folder = [NSTemporaryDirectory() stringByAppendingPathComponent:@"mobiletools_picked"];
+
+	[files removeItemAtPath:folder error:nil];
+
+	if (![files createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil])
+		return @"";
+
+	NSString* name = url.lastPathComponent.length > 0 ? url.lastPathComponent : @"picked";
+	NSString* target = [folder stringByAppendingPathComponent:name];
+
+	// Files from other providers (iCloud, other apps) are only readable inside this scope.
+	BOOL scoped = [url startAccessingSecurityScopedResource];
+	BOOL copied = [files copyItemAtPath:url.path toPath:target error:nil];
+
+	if (scoped)
+		[url stopAccessingSecurityScopedResource];
+
+	return copied ? target : @"";
+}
+
+@interface MTDocumentPickerDelegate : NSObject <UIDocumentPickerDelegate>
+@end
+
+@implementation MTDocumentPickerDelegate
+
+// iOS 11+
+- (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls
+{
+	finishPick(copyPickedFile(urls.firstObject));
+}
+
+// iOS 10 and older
+- (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentAtURL:(NSURL*)url
+{
+	finishPick(copyPickedFile(url));
+}
+
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller
+{
+	finishPick(@"");
+}
+
+@end
+
+static MTDocumentPickerDelegate* pickerDelegate;
+
+// Uniform type identifiers for the extensions, or "any file" when there are none.
+static NSArray<NSString*>* documentTypesFor(NSString* extensions)
+{
+	NSMutableArray<NSString*>* types = [NSMutableArray array];
+
+	for (NSString* extension in [extensions componentsSeparatedByString:@","])
+	{
+		if (extension.length == 0)
+			continue;
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+		// Deprecated in iOS 15 for UTType, which would need a framework that doesn't exist before iOS 14.
+		CFStringRef type = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)extension, NULL);
+#pragma clang diagnostic pop
+
+		if (type != NULL)
+			[types addObject:(__bridge_transfer NSString*)type];
+
+		if ([extension isEqualToString:@"zip"])
+			[types addObject:@"com.pkware.zip-archive"];
+	}
+
+	if (types.count == 0)
+		[types addObject:@"public.item"];
+
+	return types;
 }
 
 #pragma mark - Pending permission requests
@@ -565,6 +780,49 @@ namespace mobiletools
 			runOnMain(^{ [UIApplication sharedApplication].idleTimerDisabled = enabled; });
 		}
 
+		void setFullscreen(bool enabled)
+		{
+			runOnMain(^{
+				fullscreenEnabled = enabled;
+				applyFullscreen();
+			});
+		}
+
+		const char* getSafeArea()
+		{
+			static std::string result;
+			__block UIEdgeInsets insets = UIEdgeInsetsZero;
+			__block CGFloat scale = 1;
+
+			dispatch_block_t measure = ^{
+				UIWindow* window = findKeyWindow();
+				UIView* view = window.rootViewController.view;
+
+				if (view == nil)
+					view = window;
+
+				if (view == nil)
+					return;
+
+				// Relative to the game's view, and in its pixels (SDL sets contentScaleFactor for high DPI).
+				if (@available(iOS 11.0, *))
+					insets = view.safeAreaInsets;
+
+				scale = view.contentScaleFactor;
+			};
+
+			// UIKit must only be read on the main thread, which is where Lime runs Haxe anyway.
+			if ([NSThread isMainThread])
+				measure();
+			else
+				dispatch_sync(dispatch_get_main_queue(), measure);
+
+			char buffer[64];
+			snprintf(buffer, sizeof(buffer), "%d,%d,%d,%d", (int)ceil(insets.top * scale), (int)ceil(insets.right * scale), (int)ceil(insets.bottom * scale), (int)ceil(insets.left * scale));
+			result = buffer;
+			return result.c_str();
+		}
+
 		const char* getDeviceInfo()
 		{
 			static std::string json;
@@ -919,6 +1177,65 @@ namespace mobiletools
 				UNAuthorizationOptions options = UNAuthorizationOptionAlert | UNAuthorizationOptionBadge | UNAuthorizationOptionSound;
 				[[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:options completionHandler:^(BOOL granted, NSError* error) { setPending(key, NO); }];
 			}
+		}
+
+		bool pickFile(const char* extensions)
+		{
+			@synchronized(pickLock())
+			{
+				if (pickPending)
+					return false;
+
+				pickPending = YES;
+				pickedPath = @"";
+			}
+
+			NSArray<NSString*>* types = documentTypesFor(toNSString(extensions));
+
+			runOnMain(^{
+				UIViewController* presenter = topViewController();
+
+				if (presenter == nil)
+				{
+					finishPick(@"");
+					return;
+				}
+
+				if (pickerDelegate == nil)
+					pickerDelegate = [[MTDocumentPickerDelegate alloc] init];
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+				// Import mode hands over a copy, so nothing needs to stay open afterwards.
+				UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:types inMode:UIDocumentPickerModeImport];
+#pragma clang diagnostic pop
+
+				picker.delegate = pickerDelegate;
+				picker.modalPresentationStyle = UIModalPresentationFormSheet;
+				[presenter presentViewController:picker animated:YES completion:nil];
+			});
+
+			return true;
+		}
+
+		bool isFilePickerPending()
+		{
+			@synchronized(pickLock())
+			{
+				return pickPending;
+			}
+		}
+
+		const char* getPickedFile()
+		{
+			static std::string path;
+
+			@synchronized(pickLock())
+			{
+				path = pickedPath.UTF8String;
+			}
+
+			return path.c_str();
 		}
 
 		bool isPermissionRequestPending(const char* permission)

@@ -5,7 +5,8 @@
 	<app main="Main" path="export" file="Showcase" />
 
 	<window width="360" height="640" background="#0F1318" fps="60" />
-	<window orientation="portrait" fullscreen="true" resizable="false" if="mobile" />
+	<!-- Not fullscreen="true": Main calls MobileTools.setFullscreen(), and the two should not be mixed on Android. -->
+	<window orientation="portrait" fullscreen="false" resizable="false" if="mobile" />
 
 	<source path="source" />
 

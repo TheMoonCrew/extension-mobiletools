@@ -3,6 +3,7 @@ package mobiletools.mods;
 import haxe.Json;
 import haxe.io.Bytes;
 import haxe.io.Path;
+import mobiletools.FilePicker;
 import mobiletools.HapticLibrary;
 import mobiletools.HapticPattern;
 import mobiletools.MobileTools;
@@ -36,6 +37,11 @@ import mobiletools.scripting.ScriptApi;
  * Order matters: mods later in `mods` win when several provide the same file. Change it with `move()`.
  * Which mods are enabled, and their order, is remembered between launches.
  *
+ * On a phone, users usually get mods as `.zip` files: `importFromDevice()` lets them pick one with the system
+ * file picker, and `install()` / `uninstall()` do the rest, so nobody has to find the mods folder by hand.
+ * With Lime, scripts also hear when the app goes to the background (`onPause`), comes back (`onResume`) and
+ * when the screen rotates or resizes (`onResize`).
+ *
  * Nothing here runs on html5 (no file system): there are simply no mods.
  */
 class ModManager
@@ -54,6 +60,27 @@ class ModManager
 
 	/** Called after mods were found again, enabled, disabled or reordered. */
 	public static var onChanged:() -> Void;
+
+	/**
+	 * Folder `install()` puts mods in. Defaults to the first root, the app's own `<APP_EXTERNAL>/mods`,
+	 * which needs no permission on any platform.
+	 */
+	public static var installRoot:String;
+
+	/** Largest total size, decompressed, that `install()` accepts. 256 MB by default. */
+	public static var maxInstallSize:Int = 256 * 1024 * 1024;
+
+	/** Most files a mod archive may contain. */
+	public static var maxInstallFiles:Int = 10000;
+
+	/**
+	 * Which platform `mod.json`'s `platforms` is checked against: `android`, `ios`, `desktop` or `html5`.
+	 * Set before `init()` to try mobile only mods on desktop.
+	 */
+	public static var platform:String = ModInfoTools.currentPlatform();
+
+	/** Whether `init()` connects `pause()`, `resume()` and `resize()` to Lime's window events. Set it before `init()`. */
+	public static var followAppEvents:Bool = true;
 
 	/** Every mod found, in priority order (later wins). A copy: use the functions below to change things. */
 	public static var mods(get, never):Array<Mod>;
@@ -95,6 +122,7 @@ class ModManager
 			addRoot(root, false);
 		}
 
+		listenToApp();
 		reload();
 	}
 
@@ -362,6 +390,197 @@ class ModManager
 		call('onUpdate', [elapsed]);
 	}
 
+	// ---------------------------------------------------------------- installing
+
+	/**
+	 * Installs (or updates) a mod from a `.zip` file into `installRoot`. The archive holds the mod folder itself,
+	 * or just its contents with `mod.json` at the top.
+	 *
+	 * Nothing is changed unless the whole archive is valid: the files are checked against `maxInstallSize`,
+	 * `maxInstallFiles` and their checksums, paths leaving the mod folder are refused and symbolic links are skipped.
+	 * Updating a mod replaces it where it is and keeps it enabled if it was. A new mod starts disabled, in
+	 * `<installRoot>/<id>`, and is refused if something else already has that folder.
+	 *
+	 * @return the installed mod, or `null` after reporting the problem to `onError`.
+	 */
+	public static function install(zipPath:String):Null<Mod>
+	{
+		init();
+
+		var source = zipPath != null ? Path.withoutDirectory(zipPath) : 'install';
+		var root = installRoot != null ? Path.removeTrailingSlashes(installRoot) : (roots.length > 0 ? roots[0] : null);
+
+		if (root == null || !ModFiles.ensureDirectory(root))
+		{
+			report(source, 'There is no folder to install mods into');
+			return null;
+		}
+
+		var archive:ModArchive = null;
+		var staging:String = null;
+		var id:String = null;
+
+		try
+		{
+			archive = ModArchive.open(zipPath);
+
+			var prefix = findModFolder(archive);
+			var files = [for (entry in archive.entries) if (StringTools.startsWith(entry.name, prefix) && !entry.isDirectory && !entry.isLink && !isJunk(entry.name)) entry];
+			var total = 0.0;
+
+			for (entry in files)
+				total += entry.size;
+
+			// Before anything is decompressed, mod.json included: sizes come from the archive and may be absurd.
+			if (files.length > maxInstallFiles)
+				throw 'The mod has ${files.length} files, more than the $maxInstallFiles allowed';
+
+			if (total > maxInstallSize)
+				throw 'The mod is ${Math.ceil(total / 1048576)} MB unpacked, more than the ${Math.floor(maxInstallSize / 1048576)} MB allowed';
+
+			var folderName = prefix != '' ? prefix.substr(0, prefix.length - 1) : idFromFileName(source);
+			var info = ModInfoTools.parse(archive.read(archive.get(prefix + 'mod.json')).toString(), folderName);
+			var existing = get(info.id);
+
+			id = info.id;
+
+			// An update goes where the mod already is, whatever its folder is called.
+			var target = existing != null ? existing.path : Path.join([root, id]);
+
+			if (existing == null && (ModFiles.isDirectory(target) || ModFiles.isFile(target)))
+				throw 'Cannot install "$id": $target already exists and is not that mod';
+
+			// Unpack next to the target first, so a failure halfway leaves the installed version alone.
+			staging = Path.join([Path.directory(target), '.installing-' + id]);
+			ModFiles.deleteRecursive(staging);
+
+			if (!ModFiles.ensureDirectory(staging))
+				throw 'Could not create $staging';
+
+			for (entry in files)
+			{
+				var relative = entry.name.substr(prefix.length);
+				var destination = ModFiles.resolveInside(staging, relative);
+
+				if (destination == null)
+					throw 'Refusing to unpack "${entry.name}": it points outside the mod folder';
+
+				ModFiles.ensureDirectory(Path.directory(destination));
+
+				if (!ModFiles.writeBytes(destination, archive.read(entry)))
+					throw 'Could not write $relative';
+			}
+
+			archive.close();
+			archive = null;
+
+			if (ModFiles.isDirectory(target) && !ModFiles.deleteRecursive(target))
+				throw 'Could not remove the old version in $target';
+
+			if (!ModFiles.rename(staging, target))
+				throw 'Could not move the mod into $target';
+
+			staging = null;
+		}
+		catch (e:Dynamic)
+		{
+			if (archive != null)
+				archive.close();
+
+			if (staging != null)
+				ModFiles.deleteRecursive(staging);
+
+			report(source, Std.string(e));
+			return null;
+		}
+
+		// Brings in the new files; an updated mod that was enabled is enabled again with its new scripts.
+		reload();
+		return get(id);
+	}
+
+	/**
+	 * Disables the mod (and the mods that depend on it) and deletes its folder.
+	 * Only mods directly inside one of the roots can be removed.
+	 *
+	 * @return `false` if there is no such mod or its folder could not be deleted.
+	 */
+	public static function uninstall(id:String):Bool
+	{
+		var mod = get(id);
+
+		if (mod == null)
+			return false;
+
+		var parent = Path.directory(mod.path);
+		var inRoot = false;
+
+		for (root in roots)
+		{
+			if (samePath(root, parent))
+				inRoot = true;
+		}
+
+		if (!inRoot)
+		{
+			report(id, 'Not inside a mods folder, refusing to delete ${mod.path}');
+			return false;
+		}
+
+		disable(id);
+
+		var deleted = ModFiles.deleteRecursive(mod.path);
+
+		if (!deleted)
+			report(id, 'Could not delete ${mod.path}');
+
+		reload();
+		return deleted;
+	}
+
+	/**
+	 * Lets the user pick a mod `.zip` with the system file picker (Files on iOS, the document picker on Android:
+	 * Downloads, Drive, SD cards...) and installs it. This is the easy way onto a phone, where the mods folder
+	 * is hard or impossible to reach.
+	 *
+	 * @param callback The installed mod, or `null` when the user cancelled, the archive was refused (see `onError`)
+	 *                 or the target has no file picker.
+	 */
+	public static function importFromDevice(?callback:Null<Mod>->Void):Void
+	{
+		FilePicker.pick(['zip'], function(path)
+		{
+			var mod = path != null ? install(path) : null;
+
+			// The picker's copy has served its purpose.
+			if (path != null)
+				ModFiles.deleteRecursive(path);
+
+			if (callback != null)
+				callback(mod);
+		});
+	}
+
+	// ---------------------------------------------------------------- app events
+
+	/** Calls `onPause()` in every enabled mod. Done for you with Lime when the app goes to the background. */
+	public static function pause():Void
+	{
+		call('onPause');
+	}
+
+	/** Calls `onResume()` in every enabled mod. Done for you with Lime when the app is back in front. */
+	public static function resume():Void
+	{
+		call('onResume');
+	}
+
+	/** Calls `onResize(width, height)` in every enabled mod. Done for you with Lime on rotation and resize. */
+	public static function resize(width:Int, height:Int):Void
+	{
+		call('onResize', [width, height]);
+	}
+
 	// ---------------------------------------------------------------- internals
 
 	private static function get_mods():Array<Mod>
@@ -369,10 +588,73 @@ class ModManager
 		return list.copy();
 	}
 
+	private static function listenToApp():Void
+	{
+		#if (lime && !macro)
+		var application = lime.app.Application.current;
+
+		if (!followAppEvents || application == null || application.window == null)
+			return;
+
+		var window = application.window;
+		window.onDeactivate.add(pause);
+		window.onActivate.add(resume);
+		window.onResize.add(resize);
+		#end
+	}
+
+	/**
+	 * `''` when `mod.json` is at the top of the archive, or `'folder/'` when the mod is inside one folder.
+	 * @throws String when there is no mod, or more than one.
+	 */
+	private static function findModFolder(archive:ModArchive):String
+	{
+		if (archive.get('mod.json') != null)
+			return '';
+
+		var folders = [
+			for (entry in archive.entries)
+				if (!isJunk(entry.name) && ~/^[^\/]+\/mod\.json$/.match(entry.name))
+					entry.name.substr(0, entry.name.length - 'mod.json'.length)
+		];
+
+		if (folders.length == 0)
+			throw 'Not a mod: there is no mod.json in the archive';
+
+		if (folders.length > 1)
+			throw 'The archive holds several mods (' + folders.map(f -> f.substr(0, f.length - 1)).join(', ') + '), install them one at a time';
+
+		return folders[0];
+	}
+
+	/** Files zip tools add that no mod needs: macOS resource forks and Finder metadata. */
+	private static function isJunk(name:String):Bool
+	{
+		return StringTools.startsWith(name, '__MACOSX/') || Path.withoutDirectory(name) == '.DS_Store';
+	}
+
+	/** A usable mod id from an archive name like "Cool Colors (v2).zip". */
+	private static function idFromFileName(fileName:String):String
+	{
+		var id = ~/[^A-Za-z0-9_.\-]+/g.replace(Path.withoutExtension(fileName), '-');
+		id = ~/^[-.]+|[-.]+$/g.replace(id, '');
+		return id != '' ? id : 'mod';
+	}
+
+	private static function samePath(a:String, b:String):Bool
+	{
+		var clean = function(path:String) return Path.removeTrailingSlashes(Path.normalize(path));
+		return clean(a) == clean(b);
+	}
+
 	private static function scan(root:String):Void
 	{
 		for (entry in ModFiles.readDirectory(root))
 		{
+			// Hidden entries: system files, and half finished installs (see install()).
+			if (StringTools.startsWith(entry, '.'))
+				continue;
+
 			var folder = Path.join([root, entry]);
 			var infoFile = Path.join([folder, 'mod.json']);
 
@@ -386,7 +668,13 @@ class ModManager
 				if (get(info.id) != null)
 					throw 'Another mod already uses the id "${info.id}"';
 
-				list.push(new Mod(info, folder));
+				var mod = new Mod(info, folder);
+
+				// Shown in the mod list right away, rather than only once someone tries to enable it.
+				if (!ModInfoTools.supports(info, platform))
+					mod.setError(platformError(info));
+
+				list.push(mod);
 			}
 			catch (e:Dynamic)
 			{
@@ -421,6 +709,9 @@ class ModManager
 	{
 		if (mod.enabled)
 			return true;
+
+		if (!ModInfoTools.supports(mod.info, platform))
+			return fail(mod, platformError(mod.info));
 
 		if (chain.indexOf(mod.id) >= 0)
 			return fail(mod, 'Circular dependency: ' + chain.concat([mod.id]).join(' -> '));
@@ -600,6 +891,11 @@ class ModManager
 			if (patterns.keys().hasNext())
 				HapticLibrary.setLayer('mod:' + mod.id, HapticLibrary.PRIORITY_MODS + i, patterns);
 		}
+	}
+
+	private static function platformError(info:ModInfo):String
+	{
+		return 'Only for ' + info.platforms.join(', ') + ', not $platform';
 	}
 
 	private static function fail(mod:Mod, message:String):Bool

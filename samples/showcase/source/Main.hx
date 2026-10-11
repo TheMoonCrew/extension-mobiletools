@@ -53,6 +53,9 @@ class Main extends Sprite
 		ModManager.onError = function(source, message) log('Error in $source: $message');
 		ModManager.init();
 
+		// Instead of <window fullscreen="true">: this one also uses the area next to a notch, see getSafeArea() below.
+		MobileTools.setFullscreen(true);
+
 		addEventListener(Event.ENTER_FRAME, function(_)
 		{
 			if (needsRebuild)
@@ -80,8 +83,10 @@ class Main extends Sprite
 
 		u = Math.max(0.5, width / 360);
 
-		var pad = 16 * u;
-		var barHeight = 44 * u;
+		// In fullscreen the app draws behind the notch and the home indicator: keep content clear of them.
+		var safe = MobileTools.getSafeArea();
+		var pad = 16 * u + Math.max(safe.left, safe.right);
+		var barHeight = 44 * u + safe.bottom;
 		var contentWidth = width - pad * 2;
 
 		graphics.clear();
@@ -92,7 +97,7 @@ class Main extends Sprite
 		panel = new ScrollPanel(width, height - barHeight, 10 * u);
 		addChild(panel);
 
-		var y = pad + (MobileTools.isMobile ? 24 * u : 0); // leave room for the status bar / notch
+		var y = 16 * u + safe.top;
 		var content = panel.content;
 
 		// ---- Header
@@ -182,6 +187,22 @@ class Main extends Sprite
 
 		y = addButton(content, keepButton, pad, y + 8 * u);
 
+		y = grid(content, [
+			[fullscreenLabel(), function()
+			{
+				MobileTools.setFullscreen(!MobileTools.isFullscreen);
+				log(MobileTools.isFullscreen ? 'Fullscreen: system bars hidden' : 'System bars shown again');
+
+				// The safe area changes with the bars, give the system a moment to apply them.
+				haxe.Timer.delay(build, 300);
+			}],
+			['Show safe area', function()
+			{
+				var area = MobileTools.getSafeArea();
+				log('Safe area (px): top ${area.top}, right ${area.right}, bottom ${area.bottom}, left ${area.left}');
+			}]
+		], pad, y + 8 * u, contentWidth, '', 2);
+
 		// ---- Mods and scripting
 		y = buildMods(content, pad, y + 20 * u, contentWidth);
 
@@ -198,7 +219,7 @@ class Main extends Sprite
 
 		statusText = Theme.text(lastMessage, 13 * u, Theme.MUTED, false, contentWidth);
 		statusText.x = pad;
-		statusText.y = (barHeight - statusText.height) / 2;
+		statusText.y = (barHeight - safe.bottom - statusText.height) / 2;
 		bar.addChild(statusText);
 
 		refreshAll();
@@ -313,6 +334,18 @@ class Main extends Sprite
 				if (ok)
 					ModManager.reload();
 			}],
+			['Import mod (.zip)', function()
+			{
+				log('Pick a mod .zip...');
+				ModManager.importFromDevice(function(mod)
+				{
+					log(mod != null ? 'Installed "${mod.name}", tap it to enable' : 'Nothing installed');
+				});
+			}],
+			['Uninstall example', function()
+			{
+				log(ModManager.uninstall(ExampleMod.ID) ? 'Removed "${ExampleMod.ID}"' : 'The example mod is not installed');
+			}],
 			['Use shared storage', function()
 			{
 				log('Asking for access to shared storage...');
@@ -405,6 +438,11 @@ class Main extends Sprite
 
 		var info:DeviceInfo = MobileTools.getDeviceInfo();
 		return '${info.manufacturer} ${info.model} - OS ${info.osVersion} (API ${info.apiLevel})';
+	}
+
+	private function fullscreenLabel():String
+	{
+		return 'Fullscreen: ' + (MobileTools.isFullscreen ? 'ON' : 'OFF');
 	}
 
 	private function keepLabel():String

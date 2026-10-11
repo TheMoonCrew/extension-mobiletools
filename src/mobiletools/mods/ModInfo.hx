@@ -13,7 +13,8 @@ import haxe.Json;
  *     "author": "Ana",
  *     "description": "Changes the palette.",
  *     "dependencies": ["base-pack"],
- *     "scripts": ["scripts/main.hx"]
+ *     "scripts": ["scripts/main.hx"],
+ *     "platforms": ["android", "ios"]
  * }
  * ```
  *
@@ -36,6 +37,12 @@ typedef ModInfo =
 
 	/** Script files, relative to the mod folder, run in this order. Defaults to everything in `scripts/`. */
 	@:optional var scripts:Array<String>;
+
+	/**
+	 * Where the mod can be enabled: any of `android`, `ios`, `mobile` (both), `desktop` and `html5`.
+	 * Everywhere when missing. On other platforms the mod is still listed, with `Mod.error` explaining why it is off.
+	 */
+	@:optional var platforms:Array<String>;
 }
 
 class ModInfoTools
@@ -78,8 +85,40 @@ class ModInfoTools
 			author: stringField(data, 'author', null),
 			description: stringField(data, 'description', null),
 			dependencies: stringArrayField(data, 'dependencies'),
-			scripts: stringArrayField(data, 'scripts')
+			scripts: stringArrayField(data, 'scripts'),
+			platforms: stringArrayField(data, 'platforms')
 		};
+	}
+
+	/** The name `platforms` uses for the platform this runs on. */
+	public static function currentPlatform():String
+	{
+		#if android
+		return 'android';
+		#elseif ios
+		return 'ios';
+		#elseif (js && html5)
+		return 'html5';
+		#else
+		return 'desktop';
+		#end
+	}
+
+	/** `true` when `platforms` is missing or names `platform` (with `mobile` covering both phones). */
+	public static function supports(info:ModInfo, platform:String):Bool
+	{
+		if (info.platforms == null)
+			return true;
+
+		for (name in info.platforms)
+		{
+			var clean = name.toLowerCase();
+
+			if (clean == platform || (clean == 'mobile' && (platform == 'android' || platform == 'ios')))
+				return true;
+		}
+
+		return false;
 	}
 
 	private static function stringField(data:Dynamic, field:String, fallback:Null<String>):Null<String>

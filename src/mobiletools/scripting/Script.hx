@@ -112,13 +112,26 @@ class Script
 		{
 			return action();
 		}
-		catch (e:hscript.Expr.Error)
-		{
-			return throw '$where: ' + Printer.errorToString(e);
-		}
 		catch (e:Dynamic)
 		{
-			return throw '$where: ' + Std.string(e);
+			return throw '$where: ' + describe(e);
 		}
+	}
+
+	/**
+	 * Not `catch (e:hscript.Expr.Error)`: on hxcpp (Android, iOS) that also catches any other enum, and printing,
+	 * say, a `haxe.io.Error` thrown by a host function as an hscript error crashed the app.
+	 */
+	private static function describe(e:Dynamic):String
+	{
+		#if hscriptPos
+		if (Std.isOfType(e, hscript.Expr.Error))
+			return Printer.errorToString(e);
+		#else
+		if (Reflect.isEnumValue(e) && Type.getEnum(e) == hscript.Expr.Error)
+			return Printer.errorToString(e);
+		#end
+
+		return Std.string(e);
 	}
 }

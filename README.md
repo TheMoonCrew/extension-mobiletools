@@ -3,8 +3,8 @@
 A small, mobile-focused toolkit for [Lime](https://lime.software) / [OpenFL](https://www.openfl.org) projects.
 It exposes common native mobile features through one cross-platform Haxe API, and adds a scripting and modding system on top.
 
-> **Status:** early base (`0.1.0`). The API is small on purpose and will grow.
-> The scripting and modding system has automated tests (see [Tests](#tests)). The rest of the Haxe code typechecks for desktop, Android and iOS, and the Android Java code compiles.
+> **Status:** early base (`0.2.0`). The API is small on purpose and will grow.
+> The scripting, modding and mod installing code has automated tests (see [Tests](#tests)). The rest of the Haxe code typechecks for desktop, Android, iOS and html5, and the Android Java code compiles.
 > Neither native backend has been run on a real device yet, and the iOS Objective-C++ has not been compiled at all.
 
 ## Features
@@ -16,13 +16,18 @@ It exposes common native mobile features through one cross-platform Haxe API, an
 | Vibration           |    ✅    | ✅²  |     no-op      |
 | Haptics + patterns  |    ✅    |  ✅  |     no-op      |
 | Keep screen on      |    ✅    |  ✅  |     no-op      |
+| Fullscreen          |    ✅    | ✅³  |     no-op      |
+| Safe area insets    |    ✅    |  ✅  |   all zero     |
+| File picker         |    ✅    |  ✅  | returns `null` |
 | Device info         |    ✅    |  ✅  |    defaults    |
 | Storage folders     |    ✅    |  ✅  | working folder |
 | Scripting (hscript) |    ✅    |  ✅  |       ✅        |
 | Modding             |    ✅    |  ✅  | ✅ (not html5)  |
+| Mods from `.zip`    |    ✅    |  ✅  | ✅ (not html5)  |
 
 ¹ iOS has no native toast, so it is drawn as an overlay on the key window.
 ² iOS only has a fixed-length system vibration: the duration is ignored and `cancelVibration()` does nothing.
+³ iOS hides the status bar and lets the home indicator fade out. There is no navigation bar to hide.
 
 Unsupported targets never crash: calls are silent no-ops, so you don't need `#if` guards.
 
@@ -49,6 +54,7 @@ MobileTools.showToast('Level saved!');              // short toast
 MobileTools.showToast('Connection lost', LONG);     // long toast
 MobileTools.vibrate(50);                            // 50 ms (Android)
 MobileTools.setKeepScreenOn(true);
+MobileTools.setFullscreen(true);                    // hide the system bars
 
 var info = MobileTools.getDeviceInfo();
 trace('${info.manufacturer} ${info.model} - API ${info.apiLevel}');
@@ -304,6 +310,40 @@ var mods = MobileTools.getDirectory(APP_EXTERNAL) + '/mods';
 
 On desktop all three are the working directory. Paths have no trailing slash, and are empty when unavailable.
 
+## Fullscreen and the safe area
+
+```haxe
+MobileTools.setFullscreen(true);        // hide the system bars
+MobileTools.isFullscreen;               // true
+
+var safe = MobileTools.getSafeArea();   // pixels on each edge covered by a notch, camera hole or system bar
+hud.y = safe.top;
+pauseButton.x = stage.stageWidth - pauseButton.width - safe.right;
+```
+
+- **Android:** immersive mode. The status and navigation bars are hidden, a swipe from the edge brings them back for a moment, and the app draws next to the notch too (Android 9+). It is applied again when the app returns from the background or a dialog closes (a permission prompt, for example).
+- **iOS:** the status bar is hidden, the home indicator fades out, and system edge swipes need a second swipe so they don't fire by accident during play. Leave `UIViewControllerBasedStatusBarAppearance` at its default. If you set it to `NO`, only the status bar can be hidden.
+
+`getSafeArea()` returns `{top, right, bottom, left}` in pixels of the game's view: only the parts the game actually draws under are counted. It changes when the device rotates and when fullscreen is turned on or off, so read it again in your resize handler. It also covers the rounded corners on iOS.
+
+Pick one way of going fullscreen. On Android, `setFullscreen()` and Lime's `<window fullscreen="true" />` (or `window.fullscreen`) work on the same system bars, and SDL hides them again a moment after `setFullscreen(false)` if Lime's fullscreen is on.
+
+Scripts can read `mobile.isFullscreen()` and `mobile.getSafeArea()`, but only the app can change fullscreen.
+
+## File picker
+
+```haxe
+import mobiletools.FilePicker;
+
+FilePicker.pick(['zip', 'json'], function(path)
+{
+    if (path != null)
+        trace(sys.io.File.getContent(path));
+});
+```
+
+This opens the system picker: the Files app on iOS, the document picker on Android (Downloads, Drive, SD cards, other apps). The callback gets the path of a **private copy** of the chosen file, or `null` if the user cancelled. No permission is needed on either platform. The copy is kept in the app's cache and replaced by the next pick, so move it if you want to keep it. Android can't filter on every file type, so check what you got. On other targets the callback receives `null` straight away.
+
 ## Scripting
 
 `mobiletools.scripting.Script` runs [hscript](https://github.com/HaxeFoundation/hscript) code (Haxe-like syntax, interpreted at runtime) in a sandbox.
@@ -331,6 +371,8 @@ mobile.vibrate(100);                   mobile.selection();
 mobile.impact('heavy');                // light, medium, heavy, soft, rigid
 mobile.notification('success');        // success, warning, error
 mobile.getDeviceInfo();                mobile.isMobile / mobile.isSupported
+mobile.isFullscreen();                 mobile.getSafeArea();   // {top, right, bottom, left} in pixels
+mobile.platform                        // "android", "ios", "desktop" or "html5"
 ```
 
 **Haptics from scripts** (`haptics`) can play named patterns and build new ones. Builder methods return the builder, so calls chain, and trailing arguments are optional:
@@ -354,7 +396,7 @@ Give a script more by passing `globals` to `Script.fromString`, or `ModManager.e
 
 - There is no time limit: a script with an endless loop freezes the app.
 - Declare a top-level `var` *before* the functions that use it.
-- Define `hscriptPos` (`<haxedef name="hscriptPos" />`) if you want line numbers in script errors.
+- Lime projects get `hscriptPos` from this library's `include.xml`, so script errors have line numbers. Outside Lime, define it yourself (`-D hscriptPos`). On C++ (Android, iOS) it is needed for errors inside loops to be reported, see `ScriptInterp`.
 - Reflection is slower and less portable on some targets: scripts call functions with all their arguments, since optional ones are not reliable.
 
 ## Modding
@@ -405,11 +447,14 @@ hello-mod/
     "author": "Ana",
     "description": "Says hello.",
     "dependencies": ["base-pack"],
-    "scripts": ["scripts/main.hx"]
+    "scripts": ["scripts/main.hx"],
+    "platforms": ["mobile"]
 }
 ```
 
 Only `name` is required. `id` defaults to the folder name, and `scripts` defaults to everything in `scripts/`.
+
+`platforms` limits where the mod can be enabled: any of `android`, `ios`, `mobile` (both), `desktop` and `html5`. Leave it out and the mod works everywhere. On other platforms the mod is still listed, with `mod.error` explaining why it is off. To try a mobile only mod on desktop, set `ModManager.platform = 'android'` before `ModManager.init()`.
 
 ```haxe
 // scripts/main.hx
@@ -419,13 +464,47 @@ function onLoad()   { mod.log('loaded'); mobile.showToast('Hello!'); }
 function onUnload() { mod.log('bye'); }
 function onUpdate(elapsed) { }
 function onTap()    { taps++; mobile.impact('light'); return taps; }
+
+// app events, called for you with Lime
+function onPause()  { }                  // the app went to the background
+function onResume() { }                  // and came back
+function onResize(width, height) { }     // rotation, split screen, window resize
 ```
+
+`onPause`, `onResume` and `onResize` come from Lime's window events, which `ModManager.init()` connects to. To trigger them yourself, set `ModManager.followAppEvents = false` before `init()` and call `ModManager.pause()`, `resume()` and `resize(width, height)`. `onResume` can also run once when the app starts.
 
 Besides `mobile` and anything you expose, each script gets a `mod` object: `mod.id`, `mod.name`, `mod.version`, `mod.log(msg)`, `mod.exists(file)`, `mod.readText(file)`, `mod.readJson(file)` and `mod.list(folder)`. These only reach inside the mod's own folder: absolute paths, `..` and symbolic links pointing outside are refused.
 
 **Haptic patterns.** Every `haptics/*.json` of an enabled mod becomes available to `Haptics.playNamed()` and to every script, named by the `name` inside the file or else the file name. A mod with the same name as a built in pattern replaces it, the later mod wins between mods, and disabling a mod gives everything back. Patterns a script saves with `haptics.define()` belong to its mod and disappear with it. A broken pattern file is reported to `onError` and skipped, it doesn't stop the mod.
 
 A mod that fails to load (bad script, missing or circular dependency) stays disabled with `mod.error` set, and never stops the others. A script that throws at runtime is reported to `onError` and skipped.
+
+### Installing mods on a phone
+
+On a phone, mods usually arrive as a `.zip` in Downloads or a chat app, and the mods folder is hard to reach (on Android 11+ even file managers can't open `Android/data`). So let the user pick the zip instead:
+
+```haxe
+ModManager.importFromDevice(function(mod)
+{
+    if (mod != null)
+        ModManager.enable(mod.id);       // or let the user switch it on
+});
+
+ModManager.install('/path/to/cool-colors.zip');   // the same, from a file you already have
+ModManager.uninstall('cool-colors');              // disables it (and mods needing it) and deletes its folder
+```
+
+`importFromDevice()` opens the [file picker](#file-picker) and installs the chosen file. The archive can hold the mod folder (`cool-colors/mod.json`, ...) or just its contents (`mod.json` at the top). When there is no `id`, the folder name, or else the archive name, becomes the id.
+
+Installing is all or nothing: the mod is unpacked into a hidden folder first and only moved into place when every file was checked. Installing a mod that is already there updates it in its current folder, and keeps it enabled if it was. A new mod starts disabled, in `<installRoot>/<id>`. Archives come from strangers, so `install()` refuses:
+
+- entries that would land outside the mod folder (`..`, absolute paths), and never creates symbolic links
+- more than `ModManager.maxInstallFiles` files (10 000) or more than `ModManager.maxInstallSize` bytes unpacked (256 MB). Sizes are checked before anything is unpacked, and data larger than its entry claims is refused
+- damaged data (every file is checked against its CRC), encrypted and ZIP64 archives
+- archives with no `mod.json`, or with several mods
+- a new mod whose folder already exists with something else in it, which is left alone
+
+Problems go to `onError`, and the method returns `null`. Mods are installed into `ModManager.installRoot`, which defaults to `<APP_EXTERNAL>/mods`. `uninstall()` only deletes mods directly inside one of the roots, and it removes symbolic links without following them.
 
 ### Where mods live
 
@@ -458,7 +537,7 @@ Keep it small, and validate arguments: scripts come from files the user download
 haxe tests/test.hxml
 ```
 
-Runs two test programs (278 checks) on Haxe's interpreter, inside a temporary folder: `ModTest` (scripting, sandbox, mods) and `HapticTest` (patterns, waveform conversion, the pattern library, the `Haptics` class with a recording backend, the script API and mod provided patterns). They also pass compiled to neko and with `hscriptPos` defined. They have not been run compiled to C++, the target used on Android and iOS.
+Runs three test programs (378 checks) on Haxe's interpreter, inside a temporary folder: `ModTest` (scripting, sandbox, mods), `HapticTest` (patterns, waveform conversion, the pattern library, the `Haptics` class with a recording backend, the script API and mod provided patterns) and `MobileTest` (fullscreen and the safe area with a fake backend, the file picker fallback, the zip reader, installing, updating and uninstalling mods and what they refuse, `platforms` and the app event hooks). They also pass compiled to neko and to C++, and with `hscriptPos` defined.
 
 ## Project layout
 
@@ -466,7 +545,7 @@ Runs two test programs (278 checks) on Haxe's interpreter, inside a temporary fo
 src/mobiletools/          Haxe API (MobileTools, Permissions, Haptics, HapticPattern, ...)
 src/mobiletools/backend/  Platform backends (IBackend, AndroidBackend, IOSBackend, NullBackend)
 src/mobiletools/scripting/ hscript sandbox (Script, ScriptInterp, ScriptApi)
-src/mobiletools/mods/     Mod discovery and management (ModManager, Mod, ModInfo)
+src/mobiletools/mods/     Mod discovery, management and installing (ModManager, Mod, ModInfo, ModArchive)
 java/com/mobiletools/     Android native code, called through JNI
 project/ios/              iOS native code (Objective-C++), compiled by hxcpp
 include.xml               Lime build config (Java sources, iOS frameworks)

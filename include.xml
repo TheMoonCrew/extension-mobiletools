@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <extension>
 
+	<!--
+		Script errors as a class with line numbers. Besides better messages, this is what keeps hxcpp (Android, iOS)
+		from swallowing script errors inside loops, see ScriptInterp.exprReturn().
+	-->
+	<haxedef name="hscriptPos" />
+
 	<section if="android">
 
 		<!-- Native Java side of the Android backend -->
@@ -26,6 +32,7 @@
 		<dependency name="CoreLocation.framework" />
 		<dependency name="Photos.framework" />
 		<dependency name="MediaPlayer.framework" />
+		<dependency name="MobileCoreServices.framework" />
 		<dependency name="Contacts.framework" />
 		<dependency name="CoreBluetooth.framework" />
 		<dependency name="CoreHaptics.framework" />

@@ -72,6 +72,50 @@ class ScriptInterp extends Interp
 			variables.set(name, value);
 	}
 
+	/**
+	 * hscript's own version catches `break`, `continue` and `return` with `catch (e:Stop)`. On hxcpp (Android, iOS)
+	 * that catch also takes any other enum, such as `hscript.Expr.Error` when `hscriptPos` is not defined, and then
+	 * returns `null`: a script calling an unknown variable or a blocked class just got `null` instead of an error.
+	 * This only handles the real control flow values and rethrows everything else.
+	 */
+	override function exprReturn(e:Expr):Dynamic
+	{
+		try
+		{
+			return expr(e);
+		}
+		catch (error:Dynamic)
+		{
+			switch (controlFlow(error))
+			{
+				case 'SReturn':
+					var value = returnValue;
+					returnValue = null;
+					return value;
+				case 'SBreak':
+					throw 'Invalid break';
+				case 'SContinue':
+					throw 'Invalid continue';
+				default:
+					throw error;
+			}
+		}
+	}
+
+	/** The constructor name when `value` is hscript's private `Stop` enum, otherwise `null`. */
+	private static function controlFlow(value:Dynamic):Null<String>
+	{
+		if (!Reflect.isEnumValue(value))
+			return null;
+
+		var constructs = Type.getEnumConstructs(Type.getEnum(value));
+
+		if (constructs.length != 3 || constructs.indexOf('SBreak') < 0 || constructs.indexOf('SContinue') < 0 || constructs.indexOf('SReturn') < 0)
+			return null;
+
+		return Type.enumConstructor(value);
+	}
+
 	override function cnew(cl:String, args:Array<Dynamic>):Dynamic
 	{
 		// A class the host handed to the script as a variable.

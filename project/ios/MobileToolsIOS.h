@@ -12,6 +12,12 @@ namespace mobiletools
 		void vibrate();
 		void setKeepScreenOn(bool enabled);
 
+		// Hides the status bar and home indicator, see MobileTools.setFullscreen().
+		void setFullscreen(bool enabled);
+
+		// "top,right,bottom,left" in pixels. The pointer stays valid until the next call.
+		const char* getSafeArea();
+
 		// JSON matching the mobiletools.DeviceInfo typedef. The pointer stays valid until the next call.
 		const char* getDeviceInfo();
 
@@ -35,6 +41,12 @@ namespace mobiletools
 		void requestPermission(const char* permission);
 		bool isPermissionRequestPending(const char* permission);
 		void openSettings();
+
+		// extensions: comma separated, without dots, empty for any file. Returns false if no picker could be shown.
+		// getPickedFile() is a private copy of the chosen file, or "" when cancelled. Its pointer stays valid until the next call.
+		bool pickFile(const char* extensions);
+		bool isFilePickerPending();
+		const char* getPickedFile();
 	}
 }
 

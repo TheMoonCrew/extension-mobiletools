@@ -7,6 +7,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.SafeArea;
 import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
@@ -33,6 +34,13 @@ class NullBackend implements IBackend
 	public function getDeviceInfo():DeviceInfo
 	{
 		return DeviceInfoTools.unknown();
+	}
+
+	public function setFullscreen(enabled:Bool):Void {}
+
+	public function getSafeArea():SafeArea
+	{
+		return SafeAreaTools.none();
 	}
 
 	public function getDirectory(directory:StorageDirectory):String
@@ -73,6 +81,21 @@ class NullBackend implements IBackend
 	}
 
 	public function openSettings():Void {}
+
+	public function pickFile(extensions:String):Bool
+	{
+		return false;
+	}
+
+	public function isFilePickerPending():Bool
+	{
+		return false;
+	}
+
+	public function getPickedFile():String
+	{
+		return '';
+	}
 
 	@:noCompletion private inline function get_isNative():Bool
 	{

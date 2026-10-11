@@ -7,6 +7,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.SafeArea;
 import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
@@ -26,6 +27,12 @@ interface IBackend
 	public function cancelVibration():Void;
 	public function setKeepScreenOn(enabled:Bool):Void;
 	public function getDeviceInfo():DeviceInfo;
+
+	/** Hides or shows the system bars, see `MobileTools.setFullscreen()`. Must keep applying it until changed again. */
+	public function setFullscreen(enabled:Bool):Void;
+
+	/** Insets in pixels, see `MobileTools.getSafeArea()`. */
+	public function getSafeArea():SafeArea;
 
 	/** Absolute path of the folder, without a trailing slash, or an empty string when unavailable. */
 	public function getDirectory(directory:StorageDirectory):String;
@@ -56,4 +63,17 @@ interface IBackend
 
 	/** Opens the app's page in the system settings. */
 	public function openSettings():Void;
+
+	/**
+	 * Shows the system file picker. `extensions` is a comma separated list without dots, empty for any file.
+	 * Must return immediately, `false` if no picker could be shown, and make `isFilePickerPending()` return `true`
+	 * before returning `true`.
+	 */
+	public function pickFile(extensions:String):Bool;
+
+	/** `true` from `pickFile()` until the user chose a file (and it was copied) or cancelled. */
+	public function isFilePickerPending():Bool;
+
+	/** Absolute path of a private copy of the file chosen last, or an empty string if the user cancelled. */
+	public function getPickedFile():String;
 }

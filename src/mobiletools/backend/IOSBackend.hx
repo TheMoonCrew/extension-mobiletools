@@ -7,6 +7,7 @@ import mobiletools.ImpactStyle;
 import mobiletools.NotificationType;
 import mobiletools.Permission;
 import mobiletools.PermissionStatus;
+import mobiletools.SafeArea;
 import mobiletools.StorageDirectory;
 import mobiletools.ToastDuration;
 
@@ -58,6 +59,16 @@ class IOSBackend implements IBackend
 		{
 			return DeviceInfoTools.unknown();
 		}
+	}
+
+	public function setFullscreen(enabled:Bool):Void
+	{
+		IOSNative.setFullscreen(enabled);
+	}
+
+	public function getSafeArea():SafeArea
+	{
+		return SafeAreaTools.parse(IOSNative.getSafeArea().toString());
 	}
 
 	public function getDirectory(directory:StorageDirectory):String
@@ -113,6 +124,21 @@ class IOSBackend implements IBackend
 	public function openSettings():Void
 	{
 		IOSNative.openSettings();
+	}
+
+	public function pickFile(extensions:String):Bool
+	{
+		return IOSNative.pickFile(ConstCharStar.fromString(extensions));
+	}
+
+	public function isFilePickerPending():Bool
+	{
+		return IOSNative.isFilePickerPending();
+	}
+
+	public function getPickedFile():String
+	{
+		return IOSNative.getPickedFile().toString();
 	}
 
 	@:noCompletion private inline function get_isNative():Bool

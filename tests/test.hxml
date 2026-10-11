@@ -10,3 +10,10 @@
 -lib hscript
 -main HapticTest
 --interp
+
+--next
+-cp src
+-cp tests
+-lib hscript
+-main MobileTest
+--interp

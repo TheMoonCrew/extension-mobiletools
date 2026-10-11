@@ -83,6 +83,16 @@ class ModTest
 		throwsWith(function() Script.fromString('function (', 'broken'), 'broken', 'syntax errors name the script');
 		throwsWith(function() Script.fromString('function f() { return missing + 1; }', 'rt').call('f'), 'rt:f', 'runtime errors name the script and function');
 		throwsWith(function() Script.fromString('function f() { mobile.impact("gentle"); }', 'api').call('f'), 'Unknown impact style', 'the mobile API validates its arguments');
+
+		// hxcpp used to turn errors thrown as enums into a silent null, see ScriptInterp.exprReturn().
+		var enumThrower = ['fail' => function() throw haxe.io.Error.Overflow];
+		throwsWith(function() Script.fromString('function f() { fail(); return 1; }', 'en', enumThrower).call('f'), 'Overflow', 'enum errors from host functions are not swallowed');
+		equals(Script.fromString('function f() { for (i in 0...5) { if (i == 3) return i; } return -1; }', 'ret').call('f'), 3, 'return inside a loop still works');
+
+		#if (hscriptPos || !cpp)
+		// hscript's loop code can't be overridden: on hxcpp this needs hscriptPos, which include.xml defines.
+		throwsWith(function() Script.fromString('function f() { for (i in 0...2) missing; }', 'loop').call('f'), 'loop:f', 'errors inside loops are not swallowed');
+		#end
 	}
 
 	static function testSandbox():Void
